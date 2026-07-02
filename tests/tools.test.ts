@@ -71,6 +71,15 @@ describe('worker tools', () => {
     await expect(executeWorkerTool(sbx, 'grep', '{"pattern":"x","glob":"../*"}')).rejects.toThrow(SandboxError)
   })
 
+  it('rejects grep patterns with nested-quantifier backtracking risk', async () => {
+    await expect(executeWorkerTool(sbx, 'grep', '{"pattern":"(a+)+b"}')).rejects.toThrow(SandboxError)
+  })
+
+  it('rejects grep patterns longer than the max length', async () => {
+    const longPattern = 'a'.repeat(300)
+    await expect(executeWorkerTool(sbx, 'grep', JSON.stringify({ pattern: longPattern }))).rejects.toThrow(SandboxError)
+  })
+
   it('rejects non-positive-integer offset/limit for read_file', async () => {
     await expect(executeWorkerTool(sbx, 'read_file', '{"path":"src/a.ts","offset":0}')).rejects.toThrow()
     await expect(executeWorkerTool(sbx, 'read_file', '{"path":"src/a.ts","limit":-1}')).rejects.toThrow()

@@ -72,6 +72,22 @@ function assertSafeGlobPattern(pattern: string): void {
   }
 }
 
+const MAX_GREP_PATTERN_CHARS = 256
+// Cheap event-loop protection, not full ReDoS detection: reject patterns longer than a
+// reasonable bound, and reject the classic nested-quantifier shape (a quantified group
+// or character class immediately followed by another quantifier, e.g. "(a+)+") that is
+// the most common cause of catastrophic backtracking.
+const NESTED_QUANTIFIER_RE = /(\([^)]*[+*][^)]*\)|\[[^\]]*\][+*])\s*[+*{]/
+
+function assertSafeGrepPattern(pattern: string): void {
+  if (pattern.length > MAX_GREP_PATTERN_CHARS) {
+    throw new SandboxError(`grep pattern is too long (max ${MAX_GREP_PATTERN_CHARS} chars)`)
+  }
+  if (NESTED_QUANTIFIER_RE.test(pattern)) {
+    throw new SandboxError('grep pattern looks like it could cause catastrophic backtracking (nested quantifiers)')
+  }
+}
+
 interface ResolvedEntry {
   rel: string
   abs: string
@@ -136,6 +152,7 @@ export async function executeWorkerTool(
     case 'grep': {
       const { pattern, glob: g } = grepArgs.parse(args)
       assertSafeGlobPattern(g ?? '**/*')
+      assertSafeGrepPattern(pattern)
       const re = new RegExp(pattern)
       const hits: string[] = []
       for (const { rel, abs } of await allowedFiles(sandbox, g ?? '**/*')) {
