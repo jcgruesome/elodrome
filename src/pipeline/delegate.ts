@@ -6,7 +6,6 @@ import type { CapabilityTag, ModelEntry, Registry } from '../registry/schema'
 import { Sandbox, validateWorkspace } from '../sandbox/sandbox'
 import { appendTrace, newRunId } from '../trace/trace'
 import { runWorkerLoop, type WorkerStats } from '../worker/loop'
-import type { WorkerResult } from '../worker/output'
 import { runCritique, type Critique } from './critique'
 
 export interface DelegateRequest {
