@@ -104,9 +104,10 @@ describe('formatToolResult', () => {
     const runsDir = path.join(workspace, '.runs')
     expect(formatToolResult(runsDir, 'run_x', { a: 1 })).toBe('{"a":1}')
     const big = { blob: 'x'.repeat(30_000) }
-    const out = JSON.parse(formatToolResult(runsDir, 'run_big', big)) as { payloadPath: string }
+    const out = JSON.parse(formatToolResult(runsDir, 'run_big', big)) as { payloadPath: string; runId?: string }
     expect(fs.existsSync(out.payloadPath)).toBe(true)
     expect(YAML.parse(fs.readFileSync(out.payloadPath, 'utf8')).blob).toHaveLength(30_000)
+    expect(out.runId).toBe('run_big')
   })
 
   it('surfaces status and summary in the envelope when offloading big payloads', () => {
