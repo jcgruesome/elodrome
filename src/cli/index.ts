@@ -41,6 +41,21 @@ export function buildCli(deps: CliDeps): Command {
       print(JSON.stringify(res, null, 2))
     })
 
+  program.command('eval')
+    .description('Run an eval suite against one model and record its score')
+    .requiredOption('--suite <file>')
+    .requiredOption('--workspace <dir>')
+    .requiredOption('--model <id>')
+    .action(async (opts: { suite: string; workspace: string; model: string }) => {
+      const { runEvalSuite } = await import('../eval/harness')
+      const registry = loadRegistry(deps.registryPath)
+      const result = await runEvalSuite(
+        { config: deps.config, registry, registryPath: deps.registryPath, client: deps.client, launchDir: deps.launchDir },
+        { suitePath: opts.suite, workspace: path.resolve(opts.workspace), modelId: opts.model },
+      )
+      print(JSON.stringify(result, null, 2))
+    })
+
   return program
 }
 
