@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nv-agents": {
+      "command": "pnpm",
+      "args": ["--dir", "/Users/james/Projects/claude-code-nvidia-agents", "mcp"]
+    }
+  }
+}
