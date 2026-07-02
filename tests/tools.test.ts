@@ -50,6 +50,32 @@ describe('worker tools', () => {
     await expect(executeWorkerTool(sbx, 'write_file', '{}')).rejects.toThrow(/Unknown tool/)
     await expect(executeWorkerTool(sbx, 'read_file', 'not-json')).rejects.toThrow()
   })
+
+  it('glob and grep do not follow symlinks to outside the workspace', async () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-'))
+    const secretPath = path.join(outsideDir, 'secret.txt')
+    fs.writeFileSync(secretPath, 'TOP_SECRET_CONTENT')
+    const linkPath = path.join(sbx.root, 'evil-link.txt')
+    fs.symlinkSync(secretPath, linkPath)
+
+    const globOut = await executeWorkerTool(sbx, 'glob', '{"pattern":"**/*"}')
+    expect(globOut).not.toContain('evil-link.txt')
+
+    const grepOut = await executeWorkerTool(sbx, 'grep', '{"pattern":"TOP_SECRET_CONTENT"}')
+    expect(grepOut).toBe('No matches.')
+  })
+
+  it('rejects traversal and absolute glob patterns', async () => {
+    await expect(executeWorkerTool(sbx, 'glob', '{"pattern":"../*"}')).rejects.toThrow(SandboxError)
+    await expect(executeWorkerTool(sbx, 'glob', '{"pattern":"/etc/**"}')).rejects.toThrow(SandboxError)
+    await expect(executeWorkerTool(sbx, 'grep', '{"pattern":"x","glob":"../*"}')).rejects.toThrow(SandboxError)
+  })
+
+  it('rejects non-positive-integer offset/limit for read_file', async () => {
+    await expect(executeWorkerTool(sbx, 'read_file', '{"path":"src/a.ts","offset":0}')).rejects.toThrow()
+    await expect(executeWorkerTool(sbx, 'read_file', '{"path":"src/a.ts","limit":-1}')).rejects.toThrow()
+    await expect(executeWorkerTool(sbx, 'read_file', '{"path":"src/a.ts","offset":1.5}')).rejects.toThrow()
+  })
 })
 
 describe('workerResultSchema', () => {

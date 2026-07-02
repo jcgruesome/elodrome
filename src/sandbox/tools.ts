@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import fg from 'fast-glob'
 import { z } from 'zod'
-import { Sandbox } from './sandbox'
+import { Sandbox, SandboxError } from './sandbox'
 
 export const SUBMIT_TOOL = 'submit_result'
 const MAX_OUTPUT_CHARS = 8_000
@@ -66,12 +66,42 @@ function truncate(s: string): string {
   return s.length > MAX_OUTPUT_CHARS ? `${s.slice(0, MAX_OUTPUT_CHARS)}\n[truncated]` : s
 }
 
-async function allowedFiles(sandbox: Sandbox, pattern: string): Promise<string[]> {
-  const entries = await fg(pattern, { cwd: sandbox.root, dot: true, onlyFiles: true })
-  return entries.filter((rel) => !sandbox.isDenied(rel)).sort()
+function assertSafeGlobPattern(pattern: string): void {
+  if (path.isAbsolute(pattern) || pattern.split('/').some((seg) => seg === '..')) {
+    throw new SandboxError('glob patterns must be relative and stay inside the workspace')
+  }
 }
 
-const readArgs = z.object({ path: z.string(), offset: z.number().optional(), limit: z.number().optional() })
+interface ResolvedEntry {
+  rel: string
+  abs: string
+}
+
+async function allowedFiles(sandbox: Sandbox, pattern: string): Promise<ResolvedEntry[]> {
+  const entries = await fg(pattern, {
+    cwd: sandbox.root,
+    dot: true,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+  })
+  const resolved: ResolvedEntry[] = []
+  for (const rel of entries) {
+    if (sandbox.isDenied(rel)) continue
+    try {
+      resolved.push({ rel, abs: sandbox.resolve(rel) })
+    } catch (err) {
+      if (err instanceof SandboxError) continue
+      throw err
+    }
+  }
+  return resolved.sort((a, b) => a.rel.localeCompare(b.rel))
+}
+
+const readArgs = z.object({
+  path: z.string(),
+  offset: z.number().int().positive().optional(),
+  limit: z.number().int().positive().optional(),
+})
 const dirArgs = z.object({ path: z.string() })
 const globArgs = z.object({ pattern: z.string() })
 const grepArgs = z.object({ pattern: z.string(), glob: z.string().optional() })
@@ -100,14 +130,16 @@ export async function executeWorkerTool(
     }
     case 'glob': {
       const { pattern } = globArgs.parse(args)
-      return truncate((await allowedFiles(sandbox, pattern)).join('\n'))
+      assertSafeGlobPattern(pattern)
+      return truncate((await allowedFiles(sandbox, pattern)).map((e) => e.rel).join('\n'))
     }
     case 'grep': {
       const { pattern, glob: g } = grepArgs.parse(args)
+      assertSafeGlobPattern(g ?? '**/*')
       const re = new RegExp(pattern)
       const hits: string[] = []
-      for (const rel of await allowedFiles(sandbox, g ?? '**/*')) {
-        const content = fs.readFileSync(path.join(sandbox.root, rel), 'utf8')
+      for (const { rel, abs } of await allowedFiles(sandbox, g ?? '**/*')) {
+        const content = fs.readFileSync(abs, 'utf8')
         content.split('\n').forEach((line, i) => {
           if (hits.length < MAX_GREP_LINES && re.test(line)) hits.push(`${rel}:${i + 1}: ${line}`)
         })
