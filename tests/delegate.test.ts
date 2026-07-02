@@ -91,6 +91,26 @@ describe('delegate', () => {
     expect(res.critique.issues).toContain('bug: off by one')
   })
 
+  it('revises once when critique passes but a change is invalid', async () => {
+    const invalidSubmit = reply({
+      toolCalls: [{
+        id: 's', name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: 'v1',
+          rationale: 'r',
+          changes: [{ path: 'missing.txt', type: 'diff', content: '--- a/missing.txt\n+++ b/missing.txt\n@@ -1 +1 @@\n-old\n+new\n' }],
+        }),
+      }],
+    })
+    const client = scripted([invalidSubmit, pass, submit('v2'), pass])
+    const res = await delegate(
+      { config: cfg, registry, client, launchDir: workspace },
+      { task: 't', workspace, taskProfile: ['code-gen'] },
+    )
+    expect(res.revised).toBe(true)
+    expect(res.status).toBe('ok')
+  })
+
   it('rejects an explicit model without reliable tool calling', async () => {
     const client = scripted([])
     await expect(delegate(
