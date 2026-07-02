@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config'
 import { buildCli } from '../src/cli/index'
 import type { ChatResult } from '../src/nim/client'
