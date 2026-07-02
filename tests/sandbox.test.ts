@@ -44,4 +44,41 @@ describe('Sandbox.resolve', () => {
       expect(() => sbx.resolve(p), p).toThrow(SandboxError)
     }
   })
+  it('blocks case-variant denylisted names', () => {
+    const sbx = new Sandbox(root)
+    for (const p of ['.ENV', 'ID_RSA', 'keys/SERVER.PEM', '.GIT/config', 'AWS/CREDENTIALS']) {
+      expect(() => sbx.resolve(p), p).toThrow(SandboxError)
+    }
+  })
+  it('blocks new denylist entries: ssh keys, aws dir, authorized_keys, .netrc, .npmrc, *.key', () => {
+    const sbx = new Sandbox(root)
+    for (const p of [
+      '.ssh/id_ed25519',
+      '.ssh/config',
+      '.aws/config',
+      'authorized_keys',
+      '.netrc',
+      '.npmrc',
+      'server.key',
+    ]) {
+      expect(() => sbx.resolve(p), p).toThrow(SandboxError)
+    }
+  })
+  it('blocks symlinks inside root that point outside root', () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbx-outside-'))
+    const secretPath = path.join(outsideDir, 'secret.txt')
+    fs.writeFileSync(secretPath, 'top secret')
+
+    const linkPath = path.join(root, 'escape-link.txt')
+    if (fs.existsSync(linkPath)) fs.unlinkSync(linkPath)
+    fs.symlinkSync(secretPath, linkPath)
+
+    const dirLinkPath = path.join(root, 'escape-dir')
+    if (fs.existsSync(dirLinkPath)) fs.unlinkSync(dirLinkPath)
+    fs.symlinkSync(outsideDir, dirLinkPath)
+
+    const sbx = new Sandbox(root)
+    expect(() => sbx.resolve('escape-link.txt')).toThrow(SandboxError)
+    expect(() => sbx.resolve('escape-dir/secret.txt')).toThrow(SandboxError)
+  })
 })
