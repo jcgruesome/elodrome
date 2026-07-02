@@ -46,7 +46,7 @@ describe('Sandbox.resolve', () => {
   })
   it('blocks case-variant denylisted names', () => {
     const sbx = new Sandbox(root)
-    for (const p of ['.ENV', 'ID_RSA', 'keys/SERVER.PEM', '.GIT/config', 'AWS/CREDENTIALS']) {
+    for (const p of ['.ENV', 'ID_RSA', 'keys/SERVER.PEM', '.GIT/config', 'AWS/CREDENTIALS', 'id_rsa.backup', 'ID_ED25519.pub']) {
       expect(() => sbx.resolve(p), p).toThrow(SandboxError)
     }
   })

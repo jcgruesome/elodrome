@@ -10,7 +10,7 @@ export class SandboxError extends Error {}
 const DENY_PATTERNS: RegExp[] = [
   /(^|\/)\.env(\.[^/]*)?$/i,
   /\.pem$/i,
-  /(^|\/)id_[a-z0-9_-]+$/i,
+  /(^|\/)id_[^/]+$/i,
   /(^|\/)\.ssh(\/|$)/i,
   /(^|\/)\.aws(\/|$)/i,
   /(^|\/)authorized_keys$/i,
