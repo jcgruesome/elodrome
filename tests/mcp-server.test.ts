@@ -108,4 +108,13 @@ describe('formatToolResult', () => {
     expect(fs.existsSync(out.payloadPath)).toBe(true)
     expect(YAML.parse(fs.readFileSync(out.payloadPath, 'utf8')).blob).toHaveLength(30_000)
   })
+
+  it('surfaces status and summary in the envelope when offloading big payloads', () => {
+    const runsDir = path.join(workspace, '.runs')
+    const big = { blob: 'x'.repeat(30_000), status: 'failed_review', summary: 's' }
+    const envelope = JSON.parse(formatToolResult(runsDir, 'run_status', big)) as { payloadPath: string; status?: string; summary?: string }
+    expect(envelope.status).toBe('failed_review')
+    expect(envelope.summary).toBe('s')
+    expect(fs.existsSync(envelope.payloadPath)).toBe(true)
+  })
 })

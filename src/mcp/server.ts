@@ -22,10 +22,12 @@ export function formatToolResult(runsDir: string, runId: string, payload: unknow
   const payloadPath = path.join(dir, `${runId}.json`)
   fs.writeFileSync(payloadPath, json)
   const summary = (payload as { summary?: string }).summary
+  const status = (payload as { status?: string }).status
   return JSON.stringify({
     payloadPath,
     note: `Result was ${json.length} chars; full payload written to payloadPath. Read it from there.`,
     ...(summary ? { summary } : {}),
+    ...(status ? { status } : {}),
   })
 }
 
