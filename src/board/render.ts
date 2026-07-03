@@ -80,14 +80,14 @@ export function renderBoardHtml(d: BoardData): string {
   <section class="scouting"><h2>Scouting report</h2>
     ${d.scouting.map((s) => `<div class="scout"><span class="fighter">${escapeHtml(s.model)}</span><span class="note">${escapeHtml(s.note)}</span></div>`).join('\n    ')}
   </section>` : ''
-  return `<title>NV-AGENTS ARENA — ${escapeHtml(d.repo)}</title>
+  return `<title>ELODROME ARENA — ${escapeHtml(d.repo)}</title>
 <!-- ReshapeX app-ui tokens — DS bundle snapshot 2026-07-03 -->
 <style>
 ${TOKEN_CSS}
 </style>
 <div class="hall">
 <header>
-  <p class="eyebrow">nv-agents · blind model tournaments · NVIDIA NIM free endpoints</p>
+  <p class="eyebrow">elodrome · blind model tournaments · NVIDIA NIM free endpoints</p>
   <h1>Arena <span class="accent">/</span> Match Board</h1>
   <div class="venue">
     <span>VENUE <b>${escapeHtml(d.repo)}</b></span>

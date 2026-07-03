@@ -7,6 +7,8 @@ import { Sandbox, SandboxError } from './sandbox'
 export const SUBMIT_TOOL = 'submit_result'
 const MAX_OUTPUT_CHARS = 8_000
 const MAX_GREP_LINES = 200
+const MAX_GREP_FILE_BYTES = 2_000_000
+const MAX_GREP_TOTAL_BYTES = 4_000_000
 
 function fn(name: string, description: string, parameters: object): unknown {
   return { type: 'function', function: { name, description, parameters } }
@@ -155,7 +157,12 @@ export async function executeWorkerTool(
       assertSafeGrepPattern(pattern)
       const re = new RegExp(pattern)
       const hits: string[] = []
+      let totalBytes = 0
       for (const { rel, abs } of await allowedFiles(sandbox, g ?? '**/*')) {
+        const size = fs.statSync(abs).size
+        if (size > MAX_GREP_FILE_BYTES) continue
+        if (totalBytes + size > MAX_GREP_TOTAL_BYTES) break
+        totalBytes += size
         const content = fs.readFileSync(abs, 'utf8')
         content.split('\n').forEach((line, i) => {
           if (hits.length < MAX_GREP_LINES && re.test(line)) hits.push(`${rel}:${i + 1}: ${line}`)

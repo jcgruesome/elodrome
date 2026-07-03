@@ -33,7 +33,7 @@ frontier model (you).
    "auto" = registry ranked via task_profile; "explicit" = you passed `model`.
    For tournaments (`mode: "tournament"`), use:
    `🏆 <workerModel> beat <other ranked contestants> (judges: <judges>[, split decision if agreement=false]) · <N> req · <prompt>/<completion> tok · <outcome>`
-   After report_outcome, refresh the board: `pnpm nva board --out <scratchpad>/arena-board.html`
+   After report_outcome, refresh the board: `pnpm elodrome board --out <scratchpad>/arena-board.html`
    and republish the SAME board artifact URL, then emit the report line.
 
 **Overrides**: "do this yourself" means no delegation; "send this to <model>"
