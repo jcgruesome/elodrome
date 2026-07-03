@@ -1,6 +1,5 @@
 // Cross-process stress fixture for withStateLock.
 // Run via: node --import tsx tests/fixtures/lock-stress.mts <statePath> <iterations>
-import fs from 'node:fs'
 import type { Registry } from '../../src/registry/schema'
 import { loadState, withStateLock } from '../../src/registry/state'
 
