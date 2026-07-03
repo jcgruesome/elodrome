@@ -74,4 +74,47 @@ describe('state store', () => {
     const result = await withStateLock(p, catalog, (s) => ({ state: s, result: 'ok' }))
     expect(result).toBe('ok')
   })
+
+  it('blocks while the lock is held', async () => {
+    const p = tmpState()
+    const lockDir = `${p}.lock`
+    fs.mkdirSync(lockDir)
+    let ran = false
+    const promise = withStateLock(p, catalog, (s) => {
+      ran = true
+      return { state: s, result: 'done' }
+    })
+    await new Promise((r) => setTimeout(r, 150))
+    expect(ran).toBe(false)
+    fs.rmdirSync(lockDir)
+    const result = await promise
+    expect(ran).toBe(true)
+    expect(result).toBe('done')
+  })
+
+  it('stale lock reclaim admits exactly one winner', async () => {
+    const p = tmpState()
+    const lockDir = `${p}.lock`
+    fs.mkdirSync(lockDir, { recursive: true })
+    const old = Date.now() / 1000 - 60
+    fs.utimesSync(lockDir, old, old)
+
+    const bump = () => withStateLock(p, catalog, (s) => ({
+      state: {
+        ...s,
+        models: {
+          ...s.models,
+          'a/fresh': { ...s.models['a/fresh']!, availabilityStrikes: s.models['a/fresh']!.availabilityStrikes + 1 },
+        },
+      },
+      result: null,
+    }))
+
+    await Promise.all([bump(), bump()])
+
+    expect(loadState(p, catalog).models['a/fresh']?.availabilityStrikes).toBe(2)
+    const dir = path.dirname(p)
+    const leftovers = fs.readdirSync(dir).filter((name) => name.includes('.lock') || name.includes('.reclaim-'))
+    expect(leftovers).toEqual([])
+  })
 })

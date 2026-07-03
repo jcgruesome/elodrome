@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -65,7 +66,7 @@ export function loadState(statePath: string, catalog: Registry): NvState {
 
 export function saveState(statePath: string, state: NvState): void {
   fs.mkdirSync(path.dirname(statePath), { recursive: true })
-  const tmp = `${statePath}.tmp`
+  const tmp = `${statePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2))
   fs.renameSync(tmp, statePath)
 }
@@ -95,12 +96,19 @@ export async function withStateLock<T>(
       break
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-      if (lockAgeMs(lockDir) > LOCK_STALE_MS) {
-        try { fs.rmdirSync(lockDir) } catch { /* another process freed it first */ }
-        continue
-      }
       if (i >= LOCK_RETRIES) {
         throw new Error(`Could not acquire state lock ${lockDir} after ${LOCK_RETRIES} attempts`)
+      }
+      if (lockAgeMs(lockDir) > LOCK_STALE_MS) {
+        const reclaimPath = `${lockDir}.reclaim-${crypto.randomBytes(4).toString('hex')}`
+        try {
+          fs.renameSync(lockDir, reclaimPath)
+        } catch {
+          // another racer won the reclaim rename; retry mkdir on the next iteration
+          continue
+        }
+        fs.rmSync(reclaimPath, { recursive: true, force: true })
+        continue
       }
       await new Promise((r) => setTimeout(r, LOCK_WAIT_MS))
     }
