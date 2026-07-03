@@ -53,7 +53,7 @@ models:
     contextWindow: 131072
     toolCalling: reliable
     outcomes:
-      accepted: 0
+      accepted: 1
       reworked: 0
       rejected: 0
   - id: minimaxai/minimax-m3
@@ -63,11 +63,11 @@ models:
       - fast
     contextWindow: 196608
     toolCalling: reliable
+    evalScore: 1
     outcomes:
       accepted: 0
       reworked: 0
       rejected: 0
-    evalScore: 1
   - id: mistralai/mistral-large-3-675b-instruct-2512
     name: Mistral Large 3
     tags:

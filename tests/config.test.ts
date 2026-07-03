@@ -25,4 +25,9 @@ describe('loadConfig', () => {
     expect(cfg.baseUrl).toBe('http://localhost:9999/v1')
     expect(cfg.requestsPerMinute).toBe(5)
   })
+
+  it('rejects non-numeric env overrides', () => {
+    expect(() => loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RPM: 'abc' })).toThrow(/NVAGENTS_RPM/)
+    expect(() => loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_WORKER_TIMEOUT_MS: '-5' })).toThrow(/NVAGENTS_WORKER_TIMEOUT_MS/)
+  })
 })
