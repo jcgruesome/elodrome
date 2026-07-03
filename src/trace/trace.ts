@@ -36,3 +36,15 @@ export function findRun(runsDir: string, runId: string): RunRef | undefined {
 export function findRunModel(runsDir: string, runId: string): string | undefined {
   return findRun(runsDir, runId)?.model
 }
+
+export function hasOutcome(runsDir: string, runId: string): boolean {
+  if (!fs.existsSync(runsDir)) return false
+  for (const file of fs.readdirSync(runsDir).filter((f) => f.endsWith('.jsonl'))) {
+    for (const line of fs.readFileSync(path.join(runsDir, file), 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      const rec = JSON.parse(line) as Record<string, unknown>
+      if (rec.kind === 'outcome' && rec.runId === runId) return true
+    }
+  }
+  return false
+}

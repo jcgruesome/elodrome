@@ -139,6 +139,72 @@ describe('mcp server', () => {
     expect(state.models['w/coder']?.outcomes.accepted).toBe(1)
     expect(getRating(state, 'w/coder', 'code-gen').elo).toBe(1208) // planted 1200 + 8
   })
+
+  it('report_outcome stores a learning and rejects a second report', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({ name: 'delegate', arguments: { task: 't', workspace, task_profile: ['code-gen'] } })
+    const { runId } = JSON.parse(textOf(res)) as { runId: string }
+    await mcp.callTool({
+      name: 'report_outcome',
+      arguments: { run_id: runId, outcome: 'reworked', learning: 'left dead code in the helper' },
+    })
+    const state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder']?.learnings.at(-1)?.note).toBe('left dead code in the helper')
+    const second = await mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } })
+    expect((second as { isError?: boolean }).isError).toBe(true)
+    expect(textOf(second)).toMatch(/already reported/)
+  })
+
+  it('report_outcome strips embedded newlines from a learning note before storing', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({ name: 'delegate', arguments: { task: 't', workspace, task_profile: ['code-gen'] } })
+    const { runId } = JSON.parse(textOf(res)) as { runId: string }
+    await mcp.callTool({
+      name: 'report_outcome',
+      arguments: { run_id: runId, outcome: 'reworked', learning: 'left dead code\nin the helper' },
+    })
+    const state = loadState(statePath, loadRegistry(registryPath))
+    const note = state.models['w/coder']?.learnings.at(-1)?.note
+    expect(note).toBe('left dead code in the helper')
+    expect(note).not.toMatch(/\n/)
+  })
+
+  it('record_learning appends to any model and forget removes', async () => {
+    const mcp = await connect([])
+    await mcp.callTool({
+      name: 'record_learning',
+      arguments: { model: 'w/coder2', note: 'replies in prose instead of tool calls', tags: ['code-gen'] },
+    })
+    let state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder2']?.learnings[0]?.note).toContain('prose')
+    await mcp.callTool({ name: 'record_learning', arguments: { model: 'w/coder2', forget: 'prose' } })
+    state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder2']?.learnings).toHaveLength(0)
+    const bad = await mcp.callTool({ name: 'record_learning', arguments: { model: 'w/coder2' } })
+    expect((bad as { isError?: boolean }).isError).toBe(true)
+    const unknown = await mcp.callTool({ name: 'record_learning', arguments: { model: 'no/such', note: 'a note long enough' } })
+    expect((unknown as { isError?: boolean }).isError).toBe(true)
+  })
+
+  it('record_learning strips embedded newlines from the note before storing', async () => {
+    const mcp = await connect([])
+    await mcp.callTool({
+      name: 'record_learning',
+      arguments: { model: 'w/coder3', note: 'replies in prose\ninstead of tool calls' },
+    })
+    const state = loadState(statePath, loadRegistry(registryPath))
+    const note = state.models['w/coder3']?.learnings[0]?.note
+    expect(note).toBe('replies in prose instead of tool calls')
+    expect(note).not.toMatch(/\n/)
+  })
+
+  it('list_models exposes latest learnings', async () => {
+    const mcp = await connect([])
+    await mcp.callTool({ name: 'record_learning', arguments: { model: 'w/coder', note: 'a visible learning note' } })
+    const res = await mcp.callTool({ name: 'list_models', arguments: {} })
+    const { models } = JSON.parse(textOf(res)) as { models: Array<{ id: string; learnings: Array<{ note: string }> }> }
+    expect(models.find((m) => m.id === 'w/coder')?.learnings[0]?.note).toBe('a visible learning note')
+  })
 })
 
 describe('formatToolResult', () => {

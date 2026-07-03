@@ -2,7 +2,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { appendTrace, findRun, findRunModel, newRunId } from '../src/trace/trace'
+import {
+  appendTrace, findRun, findRunModel, hasOutcome, newRunId,
+} from '../src/trace/trace'
 
 describe('trace', () => {
   it('generates unique ids with the run_ prefix', () => {
@@ -31,5 +33,15 @@ describe('trace', () => {
     const runId = newRunId()
     appendTrace(dir, { kind: 'tournament', runId, status: 'aborted', taskProfile: ['code-gen'] })
     expect(findRun(dir, runId)).toBeUndefined()
+  })
+
+  it('hasOutcome detects outcome records only', () => {
+    const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'trace-')), 'runs')
+    const runId = newRunId()
+    appendTrace(dir, { kind: 'delegate', runId, workerModel: 'a/coder', taskProfile: ['code-gen'] })
+    expect(hasOutcome(dir, runId)).toBe(false)
+    appendTrace(dir, { kind: 'outcome', runId, outcome: 'accepted' })
+    expect(hasOutcome(dir, runId)).toBe(true)
+    expect(hasOutcome(path.join(dir, 'missing'), runId)).toBe(false)
   })
 })
