@@ -1,7 +1,7 @@
-# nv-agents Architecture
+# Elodrome Architecture
 
 ## Overview
-`nv-agents` is a multi-model delegation system for code generation and review tasks. It routes tasks to worker models via a confidence-gated tournament system, validates changes in a secure sandbox, and maintains a persistent state store for model performance tracking.
+`Elodrome` is a multi-model delegation system for code generation and review tasks. It routes tasks to worker models via a confidence-gated tournament system, validates changes in a secure sandbox, and maintains a persistent state store for model performance tracking.
 
 Core components:
 - **Delegate Pipeline**: Single-mode or tournament-mode task execution with iterative refinement.
@@ -75,7 +75,7 @@ Modeled in `src/sandbox/sandbox.ts`.
 Modeled in `src/registry/state.ts`.
 
 ### File Layout
-- Default path: `~/.nv-agents/state.json`.
+- Default path: `~/.elodrome/state.json`.
 - Schema version 1 (Zod-enforced):
   ```ts
   {
@@ -124,12 +124,12 @@ Commands:
 - `leaderboard`: Print per-tag Elo rankings, optionally as markdown.
 
 Environment variables:
-- `NVAGENTS_REGISTRY`: Override registry path.
-- `NVAGENTS_STATE`: Override state path.
+- `ELODROME_REGISTRY`: Override registry path.
+- `ELODROME_STATE`: Override state path.
 
 ---
 
 ## Data Lifecycle
-1. **Task Execution**: New `runId` generated (`src/trace/trace.ts`). Traces appended as JSONL to `~/.nv-agents/runs/<YYYY-MM-DD>.jsonl`.
+1. **Task Execution**: New `runId` generated (`src/trace/trace.ts`). Traces appended as JSONL to `~/.elodrome/runs/<YYYY-MM-DD>.jsonl`.
 2. **Outcome Reporting**: User feedback via `report_outcome` updates Elo and increments outcome counters.
 3. **State Persistence**: Atomic write via rename-after-write (`saveState` in `src/registry/state.ts`).

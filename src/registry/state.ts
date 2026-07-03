@@ -35,7 +35,7 @@ export const stateSchema = z.object({
 export type NvState = z.infer<typeof stateSchema>
 
 export function defaultStatePath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.NVAGENTS_STATE ?? path.join(os.homedir(), '.nv-agents', 'state.json')
+  return env.ELODROME_STATE ?? path.join(os.homedir(), '.elodrome', 'state.json')
 }
 
 export function getRating(state: NvState, modelId: string, tag: string): TagRating {

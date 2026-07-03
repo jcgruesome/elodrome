@@ -1,11 +1,11 @@
-# nv-agents
+# Elodrome
 
 MCP server + CLI that delegates tasks to NVIDIA NIM models. Run tests with
 `pnpm test`, typecheck with `pnpm typecheck`. `NVIDIA_API_KEY` must be exported.
 
-## Delegation policy (nv-agents MCP server)
+## Delegation policy (elodrome MCP server)
 
-When the `nv-agents` MCP tools are available, follow this policy:
+When the `elodrome` MCP tools are available, follow this policy:
 
 **Delegate by default** (via `delegate`): bulk code generation, boilerplate,
 test writing, refactors with clear specs, research digests, and secondary code

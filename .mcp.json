@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "nv-agents": {
+    "elodrome": {
       "command": "sh",
       "args": [
         "-c",

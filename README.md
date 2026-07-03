@@ -1,4 +1,4 @@
-# nv-agents
+# Elodrome
 
 An MCP server + CLI that lets Claude Code delegate coding tasks to NVIDIA NIM models (free endpoints) through a server-side pipeline — agentic read-only workers propose changes, a different model reviews them, and by default delegations run as blind tournaments where 2–3 models compete, a two-judge panel ranks anonymized entries, and per-tag Elo ratings accumulate into a per-repo leaderboard that routing learns from.
 
@@ -46,7 +46,7 @@ while task failures count as last-place losses.
 
 ```bash
 pnpm install
-export NVIDIA_API_KEY=...   # from build.nvidia.com (no charge); nv-agents fails fast if unset
+export NVIDIA_API_KEY=...   # from build.nvidia.com (no charge); elodrome fails fast if unset
 ```
 
 Register the server with Claude Code by adding it to your project's `.mcp.json`:
@@ -54,7 +54,7 @@ Register the server with Claude Code by adding it to your project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "nv-agents": {
+    "elodrome": {
       "command": "sh",
       "args": [
         "-c",
@@ -81,18 +81,18 @@ Register the server with Claude Code by adding it to your project's `.mcp.json`:
   result: record `accepted` | `reworked` | `rejected`. Feeds win rates used for future
   routing (Elo nudge +8 / −4 / −16).
 
-### CLI (`nva`)
+### CLI (`elodrome`)
 
 ```bash
-pnpm nva models                                                                 # list registry models + win rates
-pnpm nva run --task "..." --workspace $PWD --profile code-gen,fast [--model id] # delegate via full pipeline
-pnpm nva eval --suite evals/coding-basic.yaml --workspace $PWD --model id       # run an eval suite against a model
-pnpm nva leaderboard [--tag code-gen] [--md]                                    # per-tag Elo rankings
+pnpm elodrome models                                                                 # list registry models + win rates
+pnpm elodrome run --task "..." --workspace $PWD --profile code-gen,fast [--model id] # delegate via full pipeline
+pnpm elodrome eval --suite evals/coding-basic.yaml --workspace $PWD --model id       # run an eval suite against a model
+pnpm elodrome leaderboard [--tag code-gen] [--md]                                    # per-tag Elo rankings
 ```
 
 Outputs >20KB from a tool are written to `<runsDir>/payloads/<runId>.json` and returned
-by path (`~/.nv-agents/runs` by default). State lives at `~/.nv-agents/state.json`
-(lockfile-guarded); override either with `NVAGENTS_RUNS_DIR` / `NVAGENTS_STATE`.
+by path (`~/.elodrome/runs` by default). State lives at `~/.elodrome/state.json`
+(lockfile-guarded); override either with `ELODROME_RUNS_DIR` / `ELODROME_STATE`.
 
 ## The Arena
 
@@ -110,7 +110,7 @@ the higher-Elo judge breaking ties. Forfeits are classified by cause: infra fail
 availability strike, while task failures (malformed submits, blown budget/timeout) count
 as last-place losses in every pairwise Elo result. Each tournament updates Elo per
 profile tag with K=32, so the leaderboard gets measurably better the more you delegate.
-Inspect it with `pnpm nva leaderboard --md`.
+Inspect it with `pnpm elodrome leaderboard --md`.
 
 ## Safety model
 
@@ -135,4 +135,4 @@ Inspect it with `pnpm nva leaderboard --md`.
 
 ## License
 
-Private. No license has been published yet (`private: true` in `package.json`).
+MIT — see [LICENSE](LICENSE).

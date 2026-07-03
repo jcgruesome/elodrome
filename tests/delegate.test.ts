@@ -37,7 +37,7 @@ function plantState(path_: string, ratings: Record<string, { elo: number; matche
 beforeEach(() => {
   workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dlg-'))
   fs.writeFileSync(path.join(workspace, 'a.ts'), 'export const a = 1\n')
-  cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
+  cfg = loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_RUNS_DIR: path.join(workspace, '.runs') })
   statePath = path.join(workspace, 'state.json')
   // Dominant champion so the six v1 behavioral tests exercise the single path unchanged.
   plantState(statePath, {
