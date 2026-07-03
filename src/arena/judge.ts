@@ -40,13 +40,14 @@ export function anonymizeEntries(
 ): AnonymizedEntry[] {
   const hash = (model: string) => crypto.createHash('sha256').update(runId + model).digest('hex')
   const ordered = [...entries].sort((a, b) => hash(a.model).localeCompare(hash(b.model)))
+  const scrubNames = [...new Set([...names, ...entries.map((e) => e.model)])]
   return ordered.map((e, i) => {
     const changesText = e.changes
       .map((c) => `### ${c.path} (${c.type}${c.valid ? '' : `, INVALID: ${c.reason}`})\n${c.content}`)
       .join('\n\n')
     const scrubbed = scrubModelNames(
       `Summary: ${e.result.summary}\nRationale: ${e.result.rationale}\n\n${changesText}`,
-      names,
+      scrubNames,
     )
     const text = scrubbed.length > ENTRY_CAP
       ? `${scrubbed.slice(0, ENTRY_CAP)}\n[truncated for judging]`

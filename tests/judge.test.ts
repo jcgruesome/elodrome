@@ -49,6 +49,12 @@ describe('anonymization', () => {
     expect(big.text).toContain('[truncated for judging]')
     expect(a1.every((e) => !e.text.includes('m/a') && !e.text.includes('m/b'))).toBe(true)
   })
+
+  it('defensively folds entry model ids into the scrub set even with an empty names list', () => {
+    const entries = [entry('m/a', 'one'), entry('m/b', 'two')]
+    const anon = anonymizeEntries(entries, 'run_1', [])
+    expect(anon.every((e) => !e.text.includes('m/a') && !e.text.includes('m/b'))).toBe(true)
+  })
 })
 
 describe('runJudgePanel', () => {

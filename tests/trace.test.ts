@@ -25,4 +25,11 @@ describe('trace', () => {
     expect(findRunModel(dir, 'run_nope_00000000')).toBeUndefined()
     expect(findRun(dir, runId)).toEqual({ model: 'a/coder', tags: ['code-gen'] })
   })
+
+  it('does not falsely match an aborted tournament record lacking workerModel', () => {
+    const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'trace-')), 'runs')
+    const runId = newRunId()
+    appendTrace(dir, { kind: 'tournament', runId, status: 'aborted', taskProfile: ['code-gen'] })
+    expect(findRun(dir, runId)).toBeUndefined()
+  })
 })

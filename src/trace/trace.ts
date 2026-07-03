@@ -21,8 +21,12 @@ export function findRun(runsDir: string, runId: string): RunRef | undefined {
     for (const line of fs.readFileSync(path.join(runsDir, file), 'utf8').split('\n')) {
       if (!line.trim()) continue
       const rec = JSON.parse(line) as Record<string, unknown>
-      if (rec.runId === runId && (rec.kind === 'delegate' || rec.kind === 'tournament')) {
-        return { model: rec.workerModel as string, tags: (rec.taskProfile as string[] | undefined) ?? [] }
+      if (
+        rec.runId === runId
+        && (rec.kind === 'delegate' || rec.kind === 'tournament')
+        && typeof rec.workerModel === 'string'
+      ) {
+        return { model: rec.workerModel, tags: (rec.taskProfile as string[] | undefined) ?? [] }
       }
     }
   }

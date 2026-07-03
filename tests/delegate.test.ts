@@ -240,6 +240,24 @@ describe('delegate', () => {
     expect(res.workerModel).toBe('w/coder')
   })
 
+  it('records a strike and zero elo delta for a contestant that no-contest forfeits while the tournament still succeeds', async () => {
+    plantState(statePath, { 'w/coder': { elo: 1000, matches: 0 }, 'w/coder2': { elo: 1000, matches: 0 }, 'w/coder3': { elo: 1000, matches: 0 } })
+    const client = routedByModel({
+      'w/coder': [submit('c1')],
+      'w/coder2': [new NimError('degraded', 503)],
+      'w/coder3': [submit('c3')],
+      'r/rev': [verdictOfLabels],
+    })
+    const res = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: workspace },
+      { task: 't', workspace, taskProfile: ['code-gen'] },
+    )
+    expect(res.mode).toBe('tournament')
+    const state = loadState(statePath, catalog)
+    expect(state.models['w/coder2']?.availabilityStrikes).toBe(1)
+    expect(res.arena?.eloDeltas['w/coder2']).toBe(0)
+  })
+
   it('aborted tournament writes a trace and records strikes', async () => {
     plantState(statePath, { 'w/coder': { elo: 1000, matches: 0 }, 'w/coder2': { elo: 1000, matches: 0 }, 'w/coder3': { elo: 1000, matches: 0 } })
     const client = { chat: async () => { throw new NimError('degraded', 400) } }
