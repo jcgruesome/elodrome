@@ -68,6 +68,9 @@ describe('delegate', () => {
     expect(client.calls).toEqual(['w/coder', 'r/rev'])
     expect(res.changes[0]?.valid).toBe(true)
     expect(fs.readdirSync(path.join(workspace, '.runs'))).toHaveLength(1)
+    expect(res.stats.requests).toBe(2)
+    expect(res.statsBreakdown.worker.requests).toBe(1)
+    expect(res.statsBreakdown.reviewer.requests).toBe(1)
   })
 
   it('revises once after a failed critique', async () => {

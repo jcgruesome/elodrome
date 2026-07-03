@@ -54,7 +54,7 @@ models:
     toolCalling: reliable
     outcomes:
       accepted: 1
-      reworked: 1
+      reworked: 2
       rejected: 0
   - id: minimaxai/minimax-m3
     name: MiniMax M3

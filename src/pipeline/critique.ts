@@ -8,12 +8,18 @@ export const critiqueSchema = z.object({
 })
 export type Critique = z.infer<typeof critiqueSchema>
 
+export interface CritiqueUsage {
+  requests: number
+  promptTokens: number
+  completionTokens: number
+}
+
 export async function runCritique(
   client: Pick<NimClient, 'chat'>,
   reviewerModel: string,
   task: string,
   worker: WorkerResult,
-): Promise<Critique> {
+): Promise<{ critique: Critique; usage: CritiqueUsage }> {
   const changesText = worker.changes
     .map((c) => `### ${c.path} (${c.type})\n${c.content}`)
     .join('\n\n')
@@ -31,10 +37,14 @@ export async function runCritique(
         + `Worker rationale: ${worker.rationale}\n\nProposed changes:\n${changesText}`,
     },
   ]
+  const usage: CritiqueUsage = { requests: 0, promptTokens: 0, completionTokens: 0 }
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await client.chat({ model: reviewerModel, messages })
+    usage.requests += 1
+    usage.promptTokens += res.usage.promptTokens
+    usage.completionTokens += res.usage.completionTokens
     const parsed = extract(res.content ?? '')
-    if (parsed) return parsed
+    if (parsed) return { critique: parsed, usage }
     messages.push(res.assistantMessage)
     messages.push({ role: 'user', content: 'That was not valid JSON. Respond ONLY with {"verdict":"pass"|"fail","issues":[...]}.' })
   }

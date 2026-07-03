@@ -22,6 +22,11 @@ export interface DelegateDeps {
   launchDir?: string
 }
 
+export interface StatsBreakdown {
+  worker: WorkerStats
+  reviewer: WorkerStats
+}
+
 export interface DelegateResponse {
   runId: string
   status: 'ok' | 'failed_review'
@@ -33,7 +38,14 @@ export interface DelegateResponse {
   critique: Critique
   revised: boolean
   stats: WorkerStats
+  statsBreakdown: StatsBreakdown
 }
+
+const addStats = (a: WorkerStats, b: WorkerStats): WorkerStats => ({
+  requests: a.requests + b.requests,
+  promptTokens: a.promptTokens + b.promptTokens,
+  completionTokens: a.completionTokens + b.completionTokens,
+})
 
 export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promise<DelegateResponse> {
   const root = validateWorkspace(req.workspace, deps.launchDir)
@@ -42,7 +54,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
   const reviewer = selectModel(deps.registry, ['review'], { excludeId: worker.id })
   const runId = newRunId()
 
-  const attempt = async (task: string, prior: WorkerStats | undefined) => {
+  const attempt = async (task: string, prior: StatsBreakdown | undefined) => {
     const { result, stats } = await runWorkerLoop({
       client: deps.client,
       model: worker.id,
@@ -51,16 +63,13 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
       maxRequests: deps.config.maxWorkerRequests,
       timeoutMs: deps.config.workerTimeoutMs,
     })
-    const merged: WorkerStats = prior
-      ? {
-          requests: prior.requests + stats.requests,
-          promptTokens: prior.promptTokens + stats.promptTokens,
-          completionTokens: prior.completionTokens + stats.completionTokens,
-        }
-      : stats
     const changes = validateChanges(sandbox, result.changes)
-    const critique = await runCritique(deps.client, reviewer.id, req.task, result)
-    return { result, changes, critique, stats: merged }
+    const { critique, usage } = await runCritique(deps.client, reviewer.id, req.task, result)
+    const breakdown: StatsBreakdown = {
+      worker: prior ? addStats(prior.worker, stats) : stats,
+      reviewer: prior ? addStats(prior.reviewer, usage) : usage,
+    }
+    return { result, changes, critique, breakdown, stats: addStats(breakdown.worker, breakdown.reviewer) }
   }
 
   let round = await attempt(req.task, undefined)
@@ -75,7 +84,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     const revisionTask = `${req.task}\n\nYour previous attempt (summary: "${round.result.summary}") `
       + `was rejected in review. Fix ALL of these issues and resubmit:\n`
       + problems.map((p) => `- ${p}`).join('\n')
-    round = await attempt(revisionTask, round.stats)
+    round = await attempt(revisionTask, round.breakdown)
   }
 
   const finalOk = round.critique.verdict === 'pass' && round.changes.every((c) => c.valid)
@@ -90,6 +99,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     critique: round.critique,
     revised,
     stats: round.stats,
+    statsBreakdown: round.breakdown,
   }
   appendTrace(deps.config.runsDir, {
     kind: 'delegate',
@@ -101,6 +111,8 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     requests: round.stats.requests,
     promptTokens: round.stats.promptTokens,
     completionTokens: round.stats.completionTokens,
+    worker: round.breakdown.worker,
+    reviewer: round.breakdown.reviewer,
     changeCount: round.changes.length,
   })
   return response

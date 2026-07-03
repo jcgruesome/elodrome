@@ -23,24 +23,26 @@ function scripted(replies: ChatResult[]) {
 
 describe('runCritique', () => {
   it('parses a clean JSON verdict', async () => {
-    const c = await runCritique(scripted([textReply('{"verdict":"pass","issues":[]}')]), 'rev', 'task', worker)
-    expect(c.verdict).toBe('pass')
+    const { critique, usage } = await runCritique(scripted([textReply('{"verdict":"pass","issues":[]}')]), 'rev', 'task', worker)
+    expect(critique.verdict).toBe('pass')
+    expect(usage).toEqual({ requests: 1, promptTokens: 1, completionTokens: 1 })
   })
 
   it('extracts JSON wrapped in prose', async () => {
-    const c = await runCritique(
+    const { critique } = await runCritique(
       scripted([textReply('Here is my review:\n{"verdict":"fail","issues":["missing test"]}\nThanks!')]),
       'rev', 'task', worker,
     )
-    expect(c).toEqual({ verdict: 'fail', issues: ['missing test'] })
+    expect(critique).toEqual({ verdict: 'fail', issues: ['missing test'] })
   })
 
   it('retries once on garbage then succeeds', async () => {
-    const c = await runCritique(
+    const { critique, usage } = await runCritique(
       scripted([textReply('I feel good about it'), textReply('{"verdict":"pass","issues":[]}')]),
       'rev', 'task', worker,
     )
-    expect(c.verdict).toBe('pass')
+    expect(critique.verdict).toBe('pass')
+    expect(usage.requests).toBe(2)
   })
 
   it('throws after two unparseable replies', async () => {
