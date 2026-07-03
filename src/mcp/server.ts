@@ -155,29 +155,41 @@ export function buildServer(deps: ServerDeps): McpServer {
     },
   }, async (args) => {
     try {
+      // Synchronous guard-then-reserve: there is no `await` between the check and the
+      // `reported.add`, so two concurrent calls for the same run_id cannot both pass —
+      // whichever handler's synchronous prefix runs first reserves the slot before the
+      // event loop can start the other's. Everything after this point is genuinely async
+      // (lock acquisition, state mutation), so it must not gate the idempotency check.
       if (reported.has(args.run_id) || hasOutcome(deps.config.runsDir, args.run_id)) {
         throw new Error(`Outcome for "${args.run_id}" was already reported`)
       }
-      const ref = runWorkers.get(args.run_id) ?? findRun(deps.config.runsDir, args.run_id)
-      if (!ref) throw new Error(`Unknown run_id "${args.run_id}" — no delegate trace found`)
-      const catalog = loadRegistry(deps.registryPath)
-      const learning = args.learning ? normalizeNote(args.learning) : undefined
-      await withStateLock(deps.statePath, catalog, (s) => {
-        let next = applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome as Outcome)
-        if (learning) {
-          next = addLearning(next, ref.model, {
-            ts: new Date().toISOString(), note: learning,
-            tags: ref.tags, outcome: args.outcome as Outcome, runId: args.run_id,
-          })
-        }
-        return { state: next, result: null }
-      })
       reported.add(args.run_id)
-      appendTrace(deps.config.runsDir, {
-        kind: 'outcome', runId: args.run_id, model: ref.model, tags: ref.tags,
-        outcome: args.outcome, ...(learning ? { learning } : {}),
-      })
-      return ok(JSON.stringify({ recorded: true, model: ref.model, outcome: args.outcome }))
+      try {
+        const ref = runWorkers.get(args.run_id) ?? findRun(deps.config.runsDir, args.run_id)
+        if (!ref) throw new Error(`Unknown run_id "${args.run_id}" — no delegate trace found`)
+        const catalog = loadRegistry(deps.registryPath)
+        const learning = args.learning ? normalizeNote(args.learning) : undefined
+        await withStateLock(deps.statePath, catalog, (s) => {
+          let next = applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome as Outcome)
+          if (learning) {
+            next = addLearning(next, ref.model, {
+              ts: new Date().toISOString(), note: learning,
+              tags: ref.tags, outcome: args.outcome as Outcome, runId: args.run_id,
+            })
+          }
+          return { state: next, result: null }
+        })
+        appendTrace(deps.config.runsDir, {
+          kind: 'outcome', runId: args.run_id, model: ref.model, tags: ref.tags,
+          outcome: args.outcome, ...(learning ? { learning } : {}),
+        })
+        return ok(JSON.stringify({ recorded: true, model: ref.model, outcome: args.outcome }))
+      } catch (e) {
+        // Genuine failure (unknown run_id, lock timeout, etc.) — release the reservation so a
+        // legitimate retry of the same run_id isn't permanently blocked.
+        reported.delete(args.run_id)
+        throw e
+      }
     } catch (e) { return err(e) }
   })
 

@@ -10,6 +10,7 @@ import { buildServer, formatToolResult } from '../src/mcp/server'
 import type { ChatResult } from '../src/nim/client'
 import { loadRegistry } from '../src/registry/registry'
 import { getRating, loadState, saveState } from '../src/registry/state'
+import { appendTrace } from '../src/trace/trace'
 
 let workspace: string
 let registryPath: string
@@ -167,6 +168,48 @@ describe('mcp server', () => {
     const note = state.models['w/coder']?.learnings.at(-1)?.note
     expect(note).toBe('left dead code in the helper')
     expect(note).not.toMatch(/\n/)
+  })
+
+  it('report_outcome resolves concurrent double-calls for the same run_id exactly once', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({ name: 'delegate', arguments: { task: 't', workspace, task_profile: ['code-gen'] } })
+    const { runId } = JSON.parse(textOf(res)) as { runId: string }
+
+    // Fire both calls together (not sequential awaits) so they race the idempotency guard.
+    const [first, second] = await Promise.all([
+      mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } }),
+      mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } }),
+    ])
+    const results = [first, second] as Array<{ isError?: boolean }>
+    const successes = results.filter((r) => !r.isError)
+    const failures = results.filter((r) => r.isError)
+    expect(successes).toHaveLength(1)
+    expect(failures).toHaveLength(1)
+    expect(textOf(failures[0])).toMatch(/already reported/)
+    expect(JSON.parse(textOf(successes[0])) as { recorded: boolean }).toMatchObject({ recorded: true })
+
+    // The critical assertion: only ONE application of the outcome landed, not two.
+    const state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder']?.outcomes.accepted).toBe(1)
+  })
+
+  it('report_outcome rolls back its reservation on a genuine failure so a retry is not permanently blocked', async () => {
+    const mcp = await connect([])
+    const runId = 'run_not_yet_known'
+
+    // First attempt fails for a reason unrelated to idempotency: no delegate trace exists yet.
+    const first = await mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } })
+    expect((first as { isError?: boolean }).isError).toBe(true)
+    expect(textOf(first)).toMatch(/Unknown run_id/)
+
+    // The run_id becomes valid (its delegate trace lands). If the earlier failure had left a
+    // stale reservation in the `reported` set, this retry would be wrongly rejected as a duplicate.
+    appendTrace(cfg.runsDir, {
+      kind: 'delegate', runId, workerModel: 'w/coder', taskProfile: ['code-gen'],
+    })
+    const second = await mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } })
+    expect((second as { isError?: boolean }).isError).not.toBe(true)
+    expect(JSON.parse(textOf(second)) as { recorded: boolean }).toMatchObject({ recorded: true })
   })
 
   it('record_learning appends to any model and forget removes', async () => {
