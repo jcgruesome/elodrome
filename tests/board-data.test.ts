@@ -136,4 +136,14 @@ describe('buildBoardData', () => {
     expect(d.bouts).toHaveLength(1)
     expect(d.bouts[0]!.learning).toBeUndefined()
   })
+
+  it('omits outcome instead of passing through a non-enum value that would crash the renderer', () => {
+    const dir = writeTraces([
+      { ...tournament, runId: 'run_outcome_00000008' },
+      { ts: '2026-07-03T02:10:00Z', kind: 'outcome', runId: 'run_outcome_00000008', outcome: { malicious: true } },
+    ])
+    const d = buildBoardData(dir, catalog, state)
+    expect(d.bouts).toHaveLength(1)
+    expect(d.bouts[0]!.outcome).toBeUndefined()
+  })
 })

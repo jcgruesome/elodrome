@@ -72,6 +72,10 @@ function asRecordArray(v: unknown): Rec[] {
   return Array.isArray(v) ? v.filter((x): x is Rec => typeof x === 'object' && x !== null) : []
 }
 
+function asOutcome(v: unknown): Bout['outcome'] | undefined {
+  return v === 'accepted' || v === 'reworked' || v === 'rejected' ? v : undefined
+}
+
 function readRecords(runsDir: string): { records: Rec[]; corruptLines: number } {
   if (!fs.existsSync(runsDir)) return { records: [], corruptLines: 0 }
   const records: Rec[] = []
@@ -109,6 +113,7 @@ function toBout(rec: Rec, outcomes: Map<string, Rec>): Bout {
     : [{ model: asString(rec.workerModel), place: 1 }]
   const outcome = outcomes.get(rec.runId as string)
   const learning = outcome ? asString(outcome.learning) : ''
+  const validOutcome = outcome ? asOutcome(outcome.outcome) : undefined
   // `??` only guards null/undefined, so a `judges` value that's present but the
   // wrong shape (e.g. a string) intentionally falls through to asStringArray's
   // own [] fallback below, rather than being treated as "absent" and masked by
@@ -130,7 +135,7 @@ function toBout(rec: Rec, outcomes: Map<string, Rec>): Bout {
     requests: (rec.requests as number) ?? 0,
     promptTokens: (rec.promptTokens as number) ?? 0,
     completionTokens: (rec.completionTokens as number) ?? 0,
-    ...(outcome ? { outcome: outcome.outcome as Bout['outcome'] } : {}),
+    ...(validOutcome ? { outcome: validOutcome } : {}),
     ...(learning ? { learning } : {}),
   }
 }

@@ -130,6 +130,22 @@ describe('renderBoardHtml — untrusted numeric trace data', () => {
   })
 })
 
+describe('renderBoardHtml — outcome omitted', () => {
+  // src/board/data.ts's toBout() now validates outcome against the Bout['outcome']
+  // enum and omits the field entirely (rather than passing through a malformed
+  // value) when it doesn't match. Confirm the renderer's existing "unreported"
+  // fallback path (outcomePill only rendered `if (b.outcome)`) still holds for a
+  // bout with no outcome at all, end to end.
+  it('does not throw and omits the outcome badge when bout.outcome is undefined', () => {
+    const { outcome, ...rest } = data.bouts[0]!
+    const noOutcomeBout: Bout = rest
+    const noOutcomeData: BoardData = { ...data, bouts: [noOutcomeBout] }
+    expect(() => renderBoardHtml(noOutcomeData)).not.toThrow()
+    const html = renderBoardHtml(noOutcomeData)
+    expect(html).not.toContain('class="badge outcome-')
+  })
+})
+
 describe('renderBoardHtml — ranking.place defense boundary', () => {
   // ranking[].place is now guaranteed `number | null` at runtime by
   // src/board/data.ts's toBout()/toBoutRanking() coercion (asFiniteNumberOrNull)
