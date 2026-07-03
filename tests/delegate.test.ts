@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -64,6 +65,101 @@ const submit = (summary: string) => reply({
 })
 const pass = reply({ content: '{"verdict":"pass","issues":[]}' })
 const fail = reply({ content: '{"verdict":"fail","issues":["bug: off by one"]}' })
+
+describe('single mode — self-verification', () => {
+  function makeGitWorkspace(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dlg-verify-'))
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir })
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir })
+    fs.writeFileSync(path.join(dir, 'a.ts'), 'export const a = 1\n')
+    return dir
+  }
+
+  function commitAll(dir: string, message: string): void {
+    execFileSync('git', ['add', '.'], { cwd: dir })
+    execFileSync('git', ['commit', '-q', '-m', message], { cwd: dir })
+  }
+
+  it('passes verification and reports status ok when the configured check succeeds', async () => {
+    const gitWorkspace = makeGitWorkspace()
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"ok": "exit 0"}')
+    commitAll(gitWorkspace, 'init')
+    const client = {
+      chat: (() => {
+        const queue = [submit('done'), reply({ content: '{"verdict":"pass","issues":[]}' })]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.status).toBe('ok')
+    expect(result.verify.status).toBe('passed')
+  })
+
+  it('feeds a failing check back to the worker for one revision, then succeeds', async () => {
+    const gitWorkspace = makeGitWorkspace()
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"check": "test -f fixed.txt"}')
+    commitAll(gitWorkspace, 'init')
+    const submitWithFix = reply({
+      toolCalls: [{
+        id: 's2',
+        name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: 'fixed', rationale: 'r',
+          changes: [{ path: 'fixed.txt', type: 'full', content: 'x' }],
+        }),
+      }],
+    })
+    const client = {
+      chat: (() => {
+        const queue = [submit('first try'), submitWithFix, reply({ content: '{"verdict":"pass","issues":[]}' })]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.status).toBe('ok')
+    expect(result.revised).toBe(true)
+    expect(result.verify.status).toBe('passed')
+  })
+
+  it('marks failed_review when verification still fails after the one revision attempt', async () => {
+    const gitWorkspace = makeGitWorkspace()
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"check": "exit 1"}')
+    commitAll(gitWorkspace, 'init')
+    const client = {
+      chat: (() => {
+        const queue = [submit('first try'), submit('second try')]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.status).toBe('failed_review')
+    expect(result.verify.status).toBe('failed')
+  })
+
+  it('skips verification for a non-git workspace, matching pre-existing behavior', async () => {
+    const client = {
+      chat: (() => {
+        const queue = [submit('done'), reply({ content: '{"verdict":"pass","issues":[]}' })]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: workspace },
+      { task: 'do it', workspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.verify.status).toBe('skipped')
+  })
+})
 
 function scripted(replies: ChatResult[]) {
   let i = 0

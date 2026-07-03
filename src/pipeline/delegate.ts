@@ -1,6 +1,6 @@
 import type { Config } from '../config'
 import { ArenaAbortError, runArena, type RankingRow } from '../arena/arena'
-import { addAvailabilityStrike, applyTournament, type TournamentResult } from '../arena/elo'
+import { addAvailabilityStrike, addLearning, applyTournament, type TournamentResult } from '../arena/elo'
 import { buildBriefing, decide, selectJudges } from '../arena/select'
 import type { NimClient } from '../nim/client'
 import { invalidReasons, validateChanges, type ValidatedChange } from '../patch/validate'
@@ -8,6 +8,7 @@ import type { CapabilityTag, ModelEntry, Registry } from '../registry/schema'
 import { getRating, loadState, withStateLock } from '../registry/state'
 import { Sandbox, validateWorkspace } from '../sandbox/sandbox'
 import { appendTrace, newRunId } from '../trace/trace'
+import { verifyChanges, verifyFailureMessages, type VerifyResult } from '../verify'
 import { addStats, runWorkerLoop, type WorkerStats } from '../worker/loop'
 import { runCritique, type Critique } from './critique'
 
@@ -56,6 +57,7 @@ export interface DelegateResponse {
   statsBreakdown: StatsBreakdown
   taskProfile: CapabilityTag[]
   arena?: ArenaInfo
+  verify: VerifyResult
 }
 
 const ZERO: WorkerStats = { requests: 0, promptTokens: 0, completionTokens: 0 }
@@ -175,6 +177,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
       ranking: outcome.ranking, judges: outcome.judges,
       judgeIssues: outcome.judgeIssues, agreement: outcome.agreement, eloDeltas,
     },
+    verify: { status: 'skipped', checks: [], reason: 'tournament verify wired in a later task' },
   }
 }
 
@@ -194,19 +197,35 @@ async function singleDelegate(
       briefing,
     })
     const changes = validateChanges(sandbox, result.changes)
-    const { critique, usage } = await runCritique(deps.client, reviewer.id, req.task, result)
+    const verify = changes.every((c) => c.valid)
+      ? await verifyChanges(sandbox, changes, deps.config.verifyTimeoutMs)
+      : { status: 'skipped' as const, checks: [] }
+
+    let critique: Critique
+    let reviewUsage: WorkerStats
+    if (verify.status === 'failed') {
+      critique = { verdict: 'fail', issues: [] }
+      reviewUsage = ZERO
+    } else {
+      const reviewed = await runCritique(deps.client, reviewer.id, req.task, result)
+      critique = reviewed.critique
+      reviewUsage = reviewed.usage
+    }
+
     const breakdown: StatsBreakdown = {
       worker: prior ? addStats(prior.worker, stats) : stats,
-      reviewer: prior ? addStats(prior.reviewer, usage) : usage,
+      reviewer: prior ? addStats(prior.reviewer, reviewUsage) : reviewUsage,
     }
-    return { result, changes, critique, breakdown, stats: addStats(breakdown.worker, breakdown.reviewer) }
+    return { result, changes, verify, critique, breakdown, stats: addStats(breakdown.worker, breakdown.reviewer) }
   }
 
   let round = await attempt(req.task, undefined)
+  const initialVerify = round.verify
   let revised = false
   const problems = [
     ...(round.critique.verdict === 'fail' ? round.critique.issues : []),
     ...invalidReasons(round.changes),
+    ...verifyFailureMessages(round.verify),
   ]
   if (problems.length > 0) {
     revised = true
@@ -216,7 +235,22 @@ async function singleDelegate(
     round = await attempt(revisionTask, round.breakdown)
   }
 
-  const finalOk = round.critique.verdict === 'pass' && round.changes.every((c) => c.valid)
+  if (initialVerify.status === 'failed') {
+    const checkNames = initialVerify.checks.filter((c) => c.exitCode !== 0).map((c) => c.name)
+    await withStateLock(deps.statePath, deps.catalog, (s) => ({
+      state: addLearning(s, worker.id, {
+        ts: new Date().toISOString(),
+        note: `Needed a verify-revision (${checkNames.join(', ')}) before passing.`,
+        tags: req.taskProfile,
+        runId,
+      }),
+      result: null,
+    }))
+  }
+
+  const finalOk = round.critique.verdict === 'pass'
+    && round.changes.every((c) => c.valid)
+    && round.verify.status !== 'failed'
   appendTrace(deps.config.runsDir, {
     kind: 'delegate', runId, workerModel: worker.id, reviewerModel: reviewer.id,
     status: finalOk ? 'ok' : 'failed_review', revised, taskProfile: req.taskProfile,
@@ -224,6 +258,7 @@ async function singleDelegate(
     completionTokens: round.stats.completionTokens,
     worker: round.breakdown.worker, reviewer: round.breakdown.reviewer,
     changeCount: round.changes.length,
+    verify: { status: round.verify.status, checkNames: round.verify.checks.map((c) => c.name) },
   })
   return {
     runId,
@@ -239,6 +274,7 @@ async function singleDelegate(
     stats: round.stats,
     statsBreakdown: round.breakdown,
     taskProfile: req.taskProfile,
+    verify: round.verify,
   }
 }
 
