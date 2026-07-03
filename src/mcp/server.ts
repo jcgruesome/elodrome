@@ -72,7 +72,7 @@ function normalizeNote(note: string): string {
 }
 
 export function buildServer(deps: ServerDeps): McpServer {
-  const server = new McpServer({ name: 'nv-agents', version: '0.1.0' })
+  const server = new McpServer({ name: 'elodrome', version: '0.1.0' })
   const runWorkers = new Map<string, { model: string; tags: string[] }>()
   const reported = new Set<string>()
 
@@ -250,8 +250,8 @@ if (isMain) {
   const config = loadConfig()
   const server = buildServer({
     config,
-    registryPath: process.env.NVAGENTS_REGISTRY ?? defaultRegistryPath(),
-    statePath: process.env.NVAGENTS_STATE ?? defaultStatePath(),
+    registryPath: process.env.ELODROME_REGISTRY ?? defaultRegistryPath(),
+    statePath: process.env.ELODROME_STATE ?? defaultStatePath(),
     client: new NimClient(config),
   })
   await server.connect(new StdioServerTransport())

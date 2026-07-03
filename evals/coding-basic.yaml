@@ -10,7 +10,7 @@ cases:
   - id: read-then-modify
     task: >
       Read src/config.ts and produce a change adding a new optional env var
-      NVAGENTS_MAX_INLINE_CHARS (number, default 20000) as field maxInlineChars
+      ELODROME_MAX_INLINE_CHARS (number, default 20000) as field maxInlineChars
       on Config, following the existing style exactly.
     profile: [code-gen]
     check: { contains: "maxInlineChars" }

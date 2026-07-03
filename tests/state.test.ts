@@ -37,8 +37,8 @@ function tmpState(): string {
 
 describe('state store', () => {
   it('resolves the default path with env override', () => {
-    expect(defaultStatePath({ NVAGENTS_STATE: '/x/s.json' })).toBe('/x/s.json')
-    expect(defaultStatePath({})).toMatch(/\.nv-agents\/state\.json$/)
+    expect(defaultStatePath({ ELODROME_STATE: '/x/s.json' })).toBe('/x/s.json')
+    expect(defaultStatePath({})).toMatch(/\.elodrome\/state\.json$/)
   })
 
   it('creates and seeds from catalog legacy outcomes', () => {

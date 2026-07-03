@@ -45,7 +45,7 @@ describe('runEvalSuite', () => {
     const registryBefore = fs.readFileSync(registryPath, 'utf8')
     const suitePath = path.join(workspace, 'suite.yaml')
     fs.writeFileSync(suitePath, suiteYaml)
-    const cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
+    const cfg = loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_RUNS_DIR: path.join(workspace, '.runs') })
     const catalog = loadRegistry(registryPath)
     const statePath = path.join(workspace, 'state.json')
     // model is passed explicitly to runEvalSuite (via delegate's `model` field), so the
@@ -88,7 +88,7 @@ describe('runEvalSuite', () => {
     fs.writeFileSync(registryPath, registryYaml)
     const suitePath = path.join(workspace, 'suite.yaml')
     fs.writeFileSync(suitePath, suiteYaml)
-    const cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
+    const cfg = loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_RUNS_DIR: path.join(workspace, '.runs') })
     const catalog = loadRegistry(registryPath)
     const statePath = path.join(workspace, 'state.json')
 
@@ -113,7 +113,7 @@ describe('runEvalSuite', () => {
     fs.writeFileSync(registryPath, registryYaml)
     const suitePath = path.join(workspace, 'suite.yaml')
     fs.writeFileSync(suitePath, suiteYaml)
-    const cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
+    const cfg = loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_RUNS_DIR: path.join(workspace, '.runs') })
     const catalog = loadRegistry(registryPath)
     const statePath = path.join(workspace, 'state.json')
 

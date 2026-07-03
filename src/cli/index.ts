@@ -23,7 +23,7 @@ export interface CliDeps {
 
 export function buildCli(deps: CliDeps): Command {
   const print = deps.print ?? ((s: string) => process.stdout.write(`${s}\n`))
-  const program = new Command('nva').description('nv-agents: NVIDIA NIM subagents for Claude Code')
+  const program = new Command('elodrome').description('Elodrome: NVIDIA NIM model tournaments for Claude Code')
 
   program.command('models').description('List registry models').action(() => {
     const registry = loadRegistry(deps.registryPath)
@@ -75,7 +75,7 @@ export function buildCli(deps: CliDeps): Command {
       const tag = opts.tag ? capabilityTagSchema.parse(opts.tag) : undefined
       const sections = buildLeaderboard(catalog, state, tag)
       if (opts.md) {
-        const title = `${path.basename(process.cwd())} — nv-agents leaderboard — ${new Date().toISOString().slice(0, 10)}`
+        const title = `${path.basename(process.cwd())} — Elodrome leaderboard — ${new Date().toISOString().slice(0, 10)}`
         print(renderLeaderboardMd(sections, title, state.judgeAgreement))
         return
       }
@@ -111,8 +111,8 @@ if (isMain) {
   const config = loadConfig()
   const cli = buildCli({
     config,
-    registryPath: process.env.NVAGENTS_REGISTRY ?? defaultRegistryPath(),
-    statePath: process.env.NVAGENTS_STATE ?? defaultStatePath(),
+    registryPath: process.env.ELODROME_REGISTRY ?? defaultRegistryPath(),
+    statePath: process.env.ELODROME_STATE ?? defaultStatePath(),
     client: new NimClient(config),
   })
   await cli.parseAsync(process.argv)

@@ -20,7 +20,7 @@ function setup() {
   fs.writeFileSync(path.join(workspace, 'a.ts'), 'export {}')
   const registryPath = path.join(workspace, 'models.yaml')
   fs.writeFileSync(registryPath, registryYaml)
-  const cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
+  const cfg = loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_RUNS_DIR: path.join(workspace, '.runs') })
   const statePath = path.join(workspace, 'state.json')
   // Dominant champion so `run` exercises the single path deterministically.
   saveState(statePath, {
@@ -65,7 +65,7 @@ function reply(partial: Partial<ChatResult>): ChatResult {
   }
 }
 
-describe('nva cli', () => {
+describe('elodrome cli', () => {
   it('models prints the registry', async () => {
     const { workspace, registryPath, statePath, cfg } = setup()
     const out: string[] = []
@@ -74,7 +74,7 @@ describe('nva cli', () => {
       client: { chat: async () => { throw new Error('unused') } },
       print: (s) => out.push(s),
     })
-    await cli.parseAsync(['node', 'nva', 'models'])
+    await cli.parseAsync(['node', 'elodrome', 'models'])
     expect(out.join('\n')).toContain('w/coder')
     expect(out.join('\n')).toContain('reliable')
   })
@@ -92,7 +92,7 @@ describe('nva cli', () => {
       client: { chat: async () => replies[i++]! },
       print: (s) => out.push(s),
     })
-    await cli.parseAsync(['node', 'nva', 'run', '--task', 't', '--workspace', workspace, '--profile', 'code-gen'])
+    await cli.parseAsync(['node', 'elodrome', 'run', '--task', 't', '--workspace', workspace, '--profile', 'code-gen'])
     const parsed = JSON.parse(out.join('')) as { status: string }
     expect(parsed.status).toBe('ok')
   })
@@ -105,7 +105,7 @@ describe('nva cli', () => {
       client: { chat: async () => { throw new Error('unused') } },
       print: (s) => out.push(s),
     })
-    await cli.parseAsync(['node', 'nva', 'leaderboard', '--tag', 'code-gen'])
+    await cli.parseAsync(['node', 'elodrome', 'leaderboard', '--tag', 'code-gen'])
     expect(out.join('\n')).toMatch(/1\s+w\/coder\s+1200\s+9/)
   })
 
@@ -117,7 +117,7 @@ describe('nva cli', () => {
       client: { chat: async () => { throw new Error('unused') } },
       print: (s) => out.push(s),
     })
-    await cli.parseAsync(['node', 'nva', 'leaderboard', '--md'])
+    await cli.parseAsync(['node', 'elodrome', 'leaderboard', '--md'])
     expect(out.join('\n')).toContain('## code-gen')
     expect(out.join('\n')).toContain('| 1 | w/coder | 1200 | 9 |')
   })
