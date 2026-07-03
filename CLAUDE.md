@@ -22,6 +22,11 @@ frontier model (you).
 2. Apply valid changes with your own Edit/Write tools; skip or redo invalid ones.
 3. Call `report_outcome(run_id, accepted|reworked|rejected)` after deciding —
    this trains routing.
+4. Report each completed delegation to the user as one line built from the
+   delegate response:
+   `⇄ <workerModel> (auto|explicit) → review <reviewerModel>: <verdict>[, revised] · <N> req · <prompt>/<completion> tok · <outcome>`
+   e.g. `⇄ z-ai/glm-5.2 (auto) → review deepseek-v4-pro: pass · 2 req · 4.1k/2.5k tok · reworked`.
+   "auto" = registry ranked via task_profile; "explicit" = you passed `model`.
 
 **Overrides**: "do this yourself" means no delegation; "send this to <model>"
 means delegate with that explicit `model`. Use `consult` for quick second
