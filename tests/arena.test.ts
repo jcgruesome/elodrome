@@ -242,6 +242,9 @@ describe('self-verification', () => {
     expect(outcome.winner.model).toBe('w/a')
     expect(outcome.verify['w/a']!.status).toBe('passed')
     expect(outcome.verifyRevisionUsed['w/a']).toBe(true)
+    // The contestant passed on revision, so outcome.verify holds the passing result — the
+    // pre-revision failing check name must still be recoverable from verifyInitialFailures.
+    expect(outcome.verifyInitialFailures['w/a']).toEqual(['check'])
   })
 
   it('skips verification (non-git sandbox) exactly as before this feature', async () => {

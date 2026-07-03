@@ -458,6 +458,16 @@ describe('delegate', () => {
     const learnings = state.models['w/coder']?.learnings ?? []
     const coder2Learnings = state.models['w/coder2']?.learnings ?? []
     const allNotes = [...learnings, ...coder2Learnings].map((l) => l.note)
-    expect(allNotes.some((n) => n.includes('verify-revision'))).toBe(true)
+    const revisionNotes = allNotes.filter((n) => n.includes('verify-revision'))
+    // Both contestants self-corrected on their one revision attempt (the intended "good"
+    // outcome of this feature) — by the time the learning note is written, outcome.verify[m]
+    // holds the PASSING result, so the note must be built from the pre-revision failure
+    // snapshot (verifyInitialFailures), not the final verify result, or it reads as an
+    // empty, content-free "Needed a verify-revision () before passing."
+    expect(revisionNotes.length).toBeGreaterThan(0)
+    for (const note of revisionNotes) {
+      expect(note).toContain('(check)')
+      expect(note).not.toContain('()')
+    }
   })
 })

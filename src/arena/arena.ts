@@ -35,6 +35,7 @@ export interface ArenaOutcome {
   usage: { contestants: Record<string, WorkerStats>; judges: WorkerStats }
   verify: Record<string, VerifyResult>
   verifyRevisionUsed: Record<string, boolean>
+  verifyInitialFailures: Record<string, string[]>
 }
 
 export interface ArenaOptions {
@@ -87,6 +88,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
 
   const verify: Record<string, VerifyResult> = {}
   const verifyRevisionUsed: Record<string, boolean> = {}
+  const verifyInitialFailures: Record<string, string[]> = {}
   const entries: ArenaEntry[] = []
   await Promise.all(rawEntries.map(async (raw) => {
     if (!raw.changes.every((c) => c.valid)) {
@@ -97,6 +99,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     let current = raw
     if (result.status === 'failed') {
       verifyRevisionUsed[raw.model] = true
+      verifyInitialFailures[raw.model] = result.checks.filter((c) => c.exitCode !== 0).map((c) => c.name)
       current = await revise(opts, raw, verifyFailureMessages(result))
       result = current.changes.every((c) => c.valid)
         ? await verifyChanges(opts.sandbox, current.changes, opts.config.verifyTimeoutMs)
@@ -116,7 +119,9 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
   }))
 
   if (entries.length === 0) throw new ArenaAbortError(forfeits)
-  if (entries.length === 1) return singleSurvivor(opts, entries[0]!, forfeits, usage, verify, verifyRevisionUsed)
+  if (entries.length === 1) {
+    return singleSurvivor(opts, entries[0]!, forfeits, usage, verify, verifyRevisionUsed, verifyInitialFailures)
+  }
 
   const anon = anonymizeEntries(entries, opts.runId, opts.scrubNames)
   const panel = await runJudgePanel(opts.client, opts.judgePool.map((j) => j.id), opts.task, anon)
@@ -145,6 +150,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     usage,
     verify,
     verifyRevisionUsed,
+    verifyInitialFailures,
   }
 }
 
@@ -155,6 +161,7 @@ async function singleSurvivor(
   usage: ArenaOutcome['usage'],
   verify: Record<string, VerifyResult>,
   verifyRevisionUsed: Record<string, boolean>,
+  verifyInitialFailures: Record<string, string[]>,
 ): Promise<ArenaOutcome> {
   const reviewer = opts.judgePool[0]!
   let entry = survivor
@@ -184,6 +191,7 @@ async function singleSurvivor(
     usage,
     verify,
     verifyRevisionUsed,
+    verifyInitialFailures,
   }
 }
 

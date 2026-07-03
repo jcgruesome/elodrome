@@ -149,7 +149,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
   if (verifyRevisedModels.length > 0) {
     await withStateLock(deps.statePath, deps.catalog, (s) => {
       const next = verifyRevisedModels.reduce((acc, m) => {
-        const checkNames = outcome.verify[m]?.checks.filter((c) => c.exitCode !== 0).map((c) => c.name) ?? []
+        const checkNames = outcome.verifyInitialFailures[m] ?? []
         return addLearning(acc, m, {
           ts: new Date().toISOString(),
           note: `Needed a verify-revision (${checkNames.join(', ')}) before passing.`,
