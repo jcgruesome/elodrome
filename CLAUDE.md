@@ -21,7 +21,11 @@ frontier model (you).
    read-only and you are the write path.
 2. Apply valid changes with your own Edit/Write tools; skip or redo invalid ones.
 3. Call `report_outcome(run_id, accepted|reworked|rejected)` after deciding —
-   this trains routing.
+   this trains routing. For reworked/rejected, ALWAYS pass `learning`: the
+   observed behavioral cause + prescription (never style praise). Check the
+   model's existing notes in `list_models` first and refine rather than
+   restate; use `record_learning` to note behavior of losers/forfeiters/judges
+   or to `forget` a note that proved wrong.
 4. Report each completed delegation to the user as one line built from the
    delegate response:
    `⇄ <workerModel> (auto|explicit) → review <reviewerModel>: <verdict>[, revised] · <N> req · <prompt>/<completion> tok · <outcome>`
@@ -29,6 +33,8 @@ frontier model (you).
    "auto" = registry ranked via task_profile; "explicit" = you passed `model`.
    For tournaments (`mode: "tournament"`), use:
    `🏆 <workerModel> beat <other ranked contestants> (judges: <judges>[, split decision if agreement=false]) · <N> req · <prompt>/<completion> tok · <outcome>`
+   After report_outcome, refresh the board: `pnpm nva board --out <scratchpad>/arena-board.html`
+   and republish the SAME board artifact URL, then emit the report line.
 
 **Overrides**: "do this yourself" means no delegation; "send this to <model>"
 means delegate with that explicit `model`. Use `consult` for quick second
