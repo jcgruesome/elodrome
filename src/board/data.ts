@@ -1,0 +1,164 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import type { Registry } from '../registry/schema'
+import type { NvState } from '../registry/state'
+
+export interface BoutRanking {
+  model: string
+  place: number | null
+  forfeit?: string
+  forfeitReason?: string
+  delta?: number
+}
+
+export interface Bout {
+  runId: string
+  ts: string
+  mode: 'tournament' | 'single'
+  status: string
+  taskProfile: string[]
+  workerModel: string
+  judges: string[]
+  agreement: boolean | null
+  revised: boolean
+  ranking: BoutRanking[]
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  outcome?: 'accepted' | 'reworked' | 'rejected'
+  learning?: string
+}
+
+export interface BoardData {
+  generatedAt: string
+  repo: string
+  bouts: Bout[]
+  counters: {
+    runs: number; tournaments: number; singles: number; aborted: number
+    requests: number; promptTokens: number; completionTokens: number
+    sonnetEquivUsd: number; opusEquivUsd: number
+  }
+  ladders: Array<{ tag: string; rows: Array<{ rank: number; id: string; elo: number; matches: number }> }>
+  record: { accepted: number; reworked: number; rejected: number }
+  scouting: Array<{ model: string; note: string; ts: string }>
+  judgeAgreement: { agree: number; total: number }
+  corruptLines: number
+}
+
+const MAX_BOUTS = 8
+
+type Rec = Record<string, unknown>
+
+function readRecords(runsDir: string): { records: Rec[]; corruptLines: number } {
+  if (!fs.existsSync(runsDir)) return { records: [], corruptLines: 0 }
+  const records: Rec[] = []
+  let corruptLines = 0
+  for (const file of fs.readdirSync(runsDir).filter((f) => f.endsWith('.jsonl')).sort()) {
+    for (const line of fs.readFileSync(path.join(runsDir, file), 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      try {
+        records.push(JSON.parse(line) as Rec)
+      } catch {
+        corruptLines += 1
+      }
+    }
+  }
+  return { records, corruptLines }
+}
+
+function toBout(rec: Rec, outcomes: Map<string, Rec>): Bout {
+  const deltas = (rec.eloDeltas ?? {}) as Record<string, number>
+  const ranking: BoutRanking[] = rec.kind === 'tournament'
+    ? ((rec.ranking ?? []) as BoutRanking[]).map((r) => ({ ...r, delta: deltas[r.model] }))
+    : [{ model: rec.workerModel as string, place: 1 }]
+  const outcome = outcomes.get(rec.runId as string)
+  return {
+    runId: rec.runId as string,
+    ts: (rec.ts as string) ?? '',
+    mode: rec.kind === 'tournament' ? 'tournament' : 'single',
+    status: (rec.status as string) ?? 'ok',
+    taskProfile: (rec.taskProfile as string[]) ?? [],
+    workerModel: (rec.workerModel as string) ?? '',
+    judges: (rec.judges as string[]) ?? [(rec.reviewerModel as string) ?? ''].filter(Boolean),
+    agreement: (rec.agreement as boolean | null) ?? null,
+    revised: Boolean(rec.revised),
+    ranking,
+    requests: (rec.requests as number) ?? 0,
+    promptTokens: (rec.promptTokens as number) ?? 0,
+    completionTokens: (rec.completionTokens as number) ?? 0,
+    ...(outcome ? { outcome: outcome.outcome as Bout['outcome'] } : {}),
+    ...(outcome?.learning ? { learning: outcome.learning as string } : {}),
+  }
+}
+
+export function buildBoardData(
+  runsDir: string,
+  catalog: Registry,
+  state: NvState,
+  opts: { days?: number; repo?: string } = {},
+): BoardData {
+  const { records, corruptLines } = readRecords(runsDir)
+  const outcomes = new Map(records.filter((r) => r.kind === 'outcome').map((r) => [r.runId as string, r]))
+  const runs = records.filter((r) => r.kind === 'tournament' || r.kind === 'delegate')
+  const completed = runs.filter((r) => r.status !== 'aborted')
+
+  const cutoff = opts.days !== undefined ? Date.now() - opts.days * 86_400_000 : undefined
+  const bouts = completed
+    .filter((r) => cutoff === undefined || Date.parse((r.ts as string) ?? '') >= cutoff)
+    .map((r) => toBout(r, outcomes))
+    .sort((a, b) => b.ts.localeCompare(a.ts))
+    .slice(0, MAX_BOUTS)
+
+  const sum = (k: string) => runs.reduce((acc, r) => acc + ((r[k] as number) ?? 0), 0)
+  const promptTokens = sum('promptTokens')
+  const completionTokens = sum('completionTokens')
+  const counters = {
+    runs: runs.length,
+    tournaments: runs.filter((r) => r.kind === 'tournament').length,
+    singles: runs.filter((r) => r.kind === 'delegate').length,
+    aborted: runs.filter((r) => r.status === 'aborted').length,
+    requests: sum('requests'),
+    promptTokens,
+    completionTokens,
+    sonnetEquivUsd: promptTokens / 1e6 * 3 + completionTokens / 1e6 * 15,
+    opusEquivUsd: promptTokens / 1e6 * 15 + completionTokens / 1e6 * 75,
+  }
+
+  const tags = [...new Set(catalog.models.flatMap((m) => m.tags))].sort()
+  const ladders = tags
+    .map((tag) => ({
+      tag,
+      rows: catalog.models
+        .map((m) => ({ m, rating: state.models[m.id]?.ratings[tag] }))
+        .filter((x): x is { m: typeof x.m; rating: NonNullable<typeof x.rating> } => x.rating !== undefined)
+        .sort((a, b) => b.rating.elo - a.rating.elo || a.m.id.localeCompare(b.m.id))
+        .slice(0, 5)
+        .map((x, i) => ({ rank: i + 1, id: x.m.id, elo: x.rating.elo, matches: x.rating.matches })),
+    }))
+    .filter((l) => l.rows.length > 0)
+
+  const record = { accepted: 0, reworked: 0, rejected: 0 }
+  for (const o of outcomes.values()) {
+    const v = o.outcome as keyof typeof record
+    if (v in record) record[v] += 1
+  }
+
+  const scouting = Object.entries(state.models)
+    .flatMap(([model, ms]) => {
+      const last = ms.learnings.at(-1)
+      return last ? [{ model, note: last.note, ts: last.ts }] : []
+    })
+    .sort((a, b) => b.ts.localeCompare(a.ts))
+
+  return {
+    generatedAt: new Date().toISOString(),
+    repo: opts.repo ?? path.basename(process.cwd()),
+    bouts,
+    counters,
+    ladders,
+    record,
+    scouting,
+    judgeAgreement: state.judgeAgreement,
+    corruptLines,
+  }
+}
