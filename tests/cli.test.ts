@@ -135,7 +135,7 @@ describe('elodrome cli', () => {
     await cli.parseAsync(['node', 'nva', 'board', '--out', outPath])
     expect(out.join('\n')).toContain(outPath)
     const html = fs.readFileSync(outPath, 'utf8')
-    expect(html).toContain('NV-AGENTS ARENA')
+    expect(html).toContain('ELODROME ARENA')
     expect(html).toContain('w/coder')
   })
 })

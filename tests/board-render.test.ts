@@ -28,7 +28,7 @@ describe('renderBoardHtml', () => {
   const html = renderBoardHtml(data)
 
   it('is a self-contained ReshapeX-tokened page', () => {
-    expect(html.startsWith('<title>NV-AGENTS ARENA')).toBe(true)
+    expect(html.startsWith('<title>ELODROME ARENA')).toBe(true)
     expect(html).toContain('ReshapeX app-ui tokens — DS bundle snapshot 2026-07-03')
     for (const v of ['#0D1117', '#1C2128', '#73B400', '#FF006E', 'Plus Jakarta Sans', 'JetBrains Mono']) {
       expect(html).toContain(v)

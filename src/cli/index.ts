@@ -87,7 +87,7 @@ export function buildCli(deps: CliDeps): Command {
 
   program.command('board')
     .description('Write the Arena match board (ReshapeX-styled HTML) from traces + state')
-    .option('--out <path>', 'output file', path.join(os.homedir(), '.nv-agents', 'board.html'))
+    .option('--out <path>', 'output file', path.join(os.homedir(), '.elodrome', 'board.html'))
     .option('--days <n>', 'only include bouts from the last N days')
     .action((opts: { out: string; days?: string }) => {
       const catalog = loadRegistry(deps.registryPath)

@@ -9,7 +9,7 @@ import { delegate } from '../pipeline/delegate'
 import {
   defaultRegistryPath, loadRegistry, winRate,
 } from '../registry/registry'
-import { capabilityTagSchema, type CapabilityTag } from '../registry/schema'
+import { capabilityTagSchema } from '../registry/schema'
 import {
   addLearning, applyOutcome, forgetLearnings, type Outcome,
 } from '../arena/elo'
@@ -182,7 +182,7 @@ export function buildServer(deps: ServerDeps): McpServer {
         const catalog = loadRegistry(deps.registryPath)
         const learning = args.learning ? normalizeNote(args.learning) : undefined
         await withStateLock(deps.statePath, catalog, (s) => {
-          let next = applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome as Outcome)
+          let next = applyOutcome(s, ref.model, z.array(capabilityTagSchema).parse(ref.tags), args.outcome as Outcome)
           if (learning) {
             next = addLearning(next, ref.model, {
               ts: new Date().toISOString(), note: learning,

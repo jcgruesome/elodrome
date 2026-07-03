@@ -1,6 +1,13 @@
 {
   "name": "elodrome",
   "version": "0.1.0",
+  "description": "MCP server + CLI that delegates tasks to NVIDIA NIM models",
+  "license": "MIT",
+  "author": "James Sugrue",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jcgruesome/elodrome.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {
