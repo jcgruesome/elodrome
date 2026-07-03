@@ -44,4 +44,24 @@ describe('trace', () => {
     expect(hasOutcome(dir, runId)).toBe(true)
     expect(hasOutcome(path.join(dir, 'missing'), runId)).toBe(false)
   })
+
+  it('findRun skips a corrupt trace line and still finds the valid record after it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-'))
+    fs.mkdirSync(dir, { recursive: true })
+    const runId = newRunId()
+    const validLine = JSON.stringify({ kind: 'delegate', runId, workerModel: 'a/coder', taskProfile: ['code-gen'] })
+    fs.writeFileSync(path.join(dir, '2026-07-03.jsonl'), `this line is not json{{{\n${validLine}\n`)
+    expect(() => findRun(dir, runId)).not.toThrow()
+    expect(findRun(dir, runId)).toEqual({ model: 'a/coder', tags: ['code-gen'] })
+  })
+
+  it('hasOutcome skips a corrupt trace line and still finds the valid outcome record after it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-'))
+    fs.mkdirSync(dir, { recursive: true })
+    const runId = newRunId()
+    const validLine = JSON.stringify({ kind: 'outcome', runId, outcome: 'accepted' })
+    fs.writeFileSync(path.join(dir, '2026-07-03.jsonl'), `this line is not json{{{\n${validLine}\n`)
+    expect(() => hasOutcome(dir, runId)).not.toThrow()
+    expect(hasOutcome(dir, runId)).toBe(true)
+  })
 })
