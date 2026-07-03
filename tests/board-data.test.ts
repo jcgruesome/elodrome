@@ -100,4 +100,40 @@ describe('buildBoardData', () => {
     expect(d.counters.runs).toBe(0)
     expect(d.corruptLines).toBe(1)
   })
+
+  it('coerces a malicious ranking[].place to null instead of passing an XSS payload through raw', () => {
+    const dir = writeTraces([
+      {
+        ...tournament,
+        runId: 'run_xss_00000005',
+        ranking: [
+          { model: 'a/x', place: '<img src=x onerror=alert(1)>' },
+          { model: 'b/y', place: 2 },
+        ],
+      },
+    ])
+    const d = buildBoardData(dir, catalog, state)
+    expect(d.bouts).toHaveLength(1)
+    expect(d.bouts[0]!.ranking[0]).toMatchObject({ model: 'a/x', place: null })
+    expect(d.bouts[0]!.ranking[1]).toMatchObject({ model: 'b/y', place: 2 })
+  })
+
+  it('coerces a non-array judges field to an empty array instead of crashing downstream', () => {
+    const dir = writeTraces([
+      { ...tournament, runId: 'run_judges_00000006', judges: 'not-an-array' },
+    ])
+    const d = buildBoardData(dir, catalog, state)
+    expect(d.bouts).toHaveLength(1)
+    expect(d.bouts[0]!.judges).toEqual([])
+  })
+
+  it('coerces a non-string outcome.learning instead of crashing downstream', () => {
+    const dir = writeTraces([
+      { ...tournament, runId: 'run_learning_00000007' },
+      { ts: '2026-07-03T02:10:00Z', kind: 'outcome', runId: 'run_learning_00000007', outcome: 'reworked', learning: 12345 },
+    ])
+    const d = buildBoardData(dir, catalog, state)
+    expect(d.bouts).toHaveLength(1)
+    expect(d.bouts[0]!.learning).toBeUndefined()
+  })
 })

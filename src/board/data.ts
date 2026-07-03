@@ -49,6 +49,29 @@ const MAX_BOUTS = 8
 
 type Rec = Record<string, unknown>
 
+// Trace records are untrusted JSON.parse() output cast into typed shapes with `as`
+// casts elsewhere in this file. Those casts are compile-time only — a corrupted or
+// tampered trace line can put any value (wrong type, HTML/script string, object,
+// null) where a string/number/array is expected. These helpers coerce at the
+// boundary so every field on a constructed Bout/BoutRanking actually matches its
+// declared type at runtime, closing both the XSS class (wrong-type value rendered
+// raw) and the crash class (render.ts helpers throwing on unexpected shapes).
+function asString(v: unknown, fallback = ''): string {
+  return typeof v === 'string' ? v : fallback
+}
+
+function asFiniteNumberOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+}
+
+function asRecordArray(v: unknown): Rec[] {
+  return Array.isArray(v) ? v.filter((x): x is Rec => typeof x === 'object' && x !== null) : []
+}
+
 function readRecords(runsDir: string): { records: Rec[]; corruptLines: number } {
   if (!fs.existsSync(runsDir)) return { records: [], corruptLines: 0 }
   const records: Rec[] = []
@@ -66,20 +89,41 @@ function readRecords(runsDir: string): { records: Rec[]; corruptLines: number } 
   return { records, corruptLines }
 }
 
+function toBoutRanking(r: Rec, deltas: Record<string, number>): BoutRanking {
+  const model = asString(r.model)
+  const forfeit = asString(r.forfeit)
+  const forfeitReason = asString(r.forfeitReason)
+  return {
+    model,
+    place: asFiniteNumberOrNull(r.place),
+    delta: deltas[model],
+    ...(forfeit ? { forfeit } : {}),
+    ...(forfeitReason ? { forfeitReason } : {}),
+  }
+}
+
 function toBout(rec: Rec, outcomes: Map<string, Rec>): Bout {
   const deltas = (rec.eloDeltas ?? {}) as Record<string, number>
   const ranking: BoutRanking[] = rec.kind === 'tournament'
-    ? ((rec.ranking ?? []) as BoutRanking[]).map((r) => ({ ...r, delta: deltas[r.model] }))
-    : [{ model: rec.workerModel as string, place: 1 }]
+    ? asRecordArray(rec.ranking).map((r) => toBoutRanking(r, deltas))
+    : [{ model: asString(rec.workerModel), place: 1 }]
   const outcome = outcomes.get(rec.runId as string)
+  const learning = outcome ? asString(outcome.learning) : ''
+  // `??` only guards null/undefined, so a `judges` value that's present but the
+  // wrong shape (e.g. a string) intentionally falls through to asStringArray's
+  // own [] fallback below, rather than being treated as "absent" and masked by
+  // the reviewerModel fallback.
+  const judges = rec.judges !== undefined && rec.judges !== null
+    ? asStringArray(rec.judges)
+    : [asString(rec.reviewerModel)].filter(Boolean)
   return {
     runId: rec.runId as string,
-    ts: (rec.ts as string) ?? '',
+    ts: asString(rec.ts),
     mode: rec.kind === 'tournament' ? 'tournament' : 'single',
     status: (rec.status as string) ?? 'ok',
-    taskProfile: (rec.taskProfile as string[]) ?? [],
+    taskProfile: asStringArray(rec.taskProfile),
     workerModel: (rec.workerModel as string) ?? '',
-    judges: (rec.judges as string[]) ?? [(rec.reviewerModel as string) ?? ''].filter(Boolean),
+    judges,
     agreement: (rec.agreement as boolean | null) ?? null,
     revised: Boolean(rec.revised),
     ranking,
@@ -87,7 +131,7 @@ function toBout(rec: Rec, outcomes: Map<string, Rec>): Bout {
     promptTokens: (rec.promptTokens as number) ?? 0,
     completionTokens: (rec.completionTokens as number) ?? 0,
     ...(outcome ? { outcome: outcome.outcome as Bout['outcome'] } : {}),
-    ...(outcome?.learning ? { learning: outcome.learning as string } : {}),
+    ...(learning ? { learning } : {}),
   }
 }
 

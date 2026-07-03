@@ -129,3 +129,26 @@ describe('renderBoardHtml — untrusted numeric trace data', () => {
     expect(html).not.toContain(scriptPayload)
   })
 })
+
+describe('renderBoardHtml — ranking.place defense boundary', () => {
+  // ranking[].place is now guaranteed `number | null` at runtime by
+  // src/board/data.ts's toBout()/toBoutRanking() coercion (asFiniteNumberOrNull)
+  // before a BoardData ever reaches render.ts — that's where this class of bug
+  // (C1/I1) is actually closed, and buildBoardData can no longer construct this
+  // shape. This test bypasses the type system the same way the mode/outcome/
+  // numeric tests above do, purely to confirm render.ts's existing behavior
+  // (interpolating `r.place ?? '–'` with no escaping, since place is contractually
+  // numeric) doesn't crash if it ever received an out-of-contract value. It is a
+  // smoke check on the backstop, not a substitute for the data-layer fix, and it
+  // intentionally does not assert the payload is absent from the output.
+  it('does not throw when a ranking row has an out-of-contract place value', () => {
+    const maliciousBout: Bout = {
+      ...data.bouts[0]!,
+      ranking: [
+        { ...data.bouts[0]!.ranking[0]!, place: '<img src=x onerror=alert(1)>' as unknown as number | null },
+      ],
+    }
+    const tampered: BoardData = { ...data, bouts: [maliciousBout] }
+    expect(() => renderBoardHtml(tampered)).not.toThrow()
+  })
+})
