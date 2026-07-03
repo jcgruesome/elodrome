@@ -139,6 +139,9 @@ Inspect it with `pnpm elodrome leaderboard --md`.
 
 - [Architecture](docs/ARCHITECTURE.md) — pipeline, sandbox, state store, MCP/CLI surfaces.
 - [Security & Code-Quality Audit](docs/AUDIT-2026-07-03.md) — untrusted-input boundaries and findings.
+- [docs/superpowers/](docs/superpowers/) — historical planning docs (plans/specs) from before this
+  project was renamed from `nv-agents`/`nva` to `elodrome`; still useful for design context, but
+  code samples and commands inside predate the rename.
 
 ## License
 
