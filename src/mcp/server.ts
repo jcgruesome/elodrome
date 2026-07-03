@@ -7,10 +7,12 @@ import { loadConfig, type Config } from '../config'
 import { NimClient } from '../nim/client'
 import { delegate } from '../pipeline/delegate'
 import {
-  defaultRegistryPath, loadRegistry, recordOutcome, winRate,
+  defaultRegistryPath, loadRegistry, winRate,
 } from '../registry/registry'
-import { capabilityTagSchema } from '../registry/schema'
-import { appendTrace, findRunModel } from '../trace/trace'
+import { capabilityTagSchema, type CapabilityTag } from '../registry/schema'
+import { applyOutcome } from '../arena/elo'
+import { defaultStatePath, loadState, withStateLock } from '../registry/state'
+import { appendTrace, findRun } from '../trace/trace'
 
 const MAX_INLINE_CHARS = 20_000
 
@@ -35,6 +37,7 @@ export function formatToolResult(runsDir: string, runId: string, payload: unknow
 export interface ServerDeps {
   config: Config
   registryPath: string
+  statePath: string
   client: Pick<NimClient, 'chat'>
   launchDir?: string
 }
@@ -49,7 +52,7 @@ function err(e: unknown) {
 
 export function buildServer(deps: ServerDeps): McpServer {
   const server = new McpServer({ name: 'nv-agents', version: '0.1.0' })
-  const runWorkers = new Map<string, string>()
+  const runWorkers = new Map<string, { model: string; tags: string[] }>()
 
   server.registerTool('list_models', {
     description: 'List NVIDIA NIM models available for delegation, with capability tags, '
@@ -58,9 +61,11 @@ export function buildServer(deps: ServerDeps): McpServer {
   }, async () => {
     try {
       const registry = loadRegistry(deps.registryPath)
+      const state = loadState(deps.statePath, registry)
       const models = registry.models.map((m) => ({
         id: m.id, name: m.name, tags: m.tags, contextWindow: m.contextWindow,
-        toolCalling: m.toolCalling, evalScore: m.evalScore ?? null, winRate: winRate(m),
+        toolCalling: m.toolCalling, evalScore: m.evalScore ?? null,
+        winRate: winRate(state.models[m.id]?.outcomes ?? { accepted: 0, reworked: 0, rejected: 0 }),
       }))
       return ok(JSON.stringify({ models }))
     } catch (e) { return err(e) }
@@ -79,12 +84,12 @@ export function buildServer(deps: ServerDeps): McpServer {
     },
   }, async (args) => {
     try {
-      const registry = loadRegistry(deps.registryPath)
+      const catalog = loadRegistry(deps.registryPath)
       const res = await delegate(
-        { config: deps.config, registry, client: deps.client, launchDir: deps.launchDir },
+        { config: deps.config, catalog, statePath: deps.statePath, client: deps.client, launchDir: deps.launchDir },
         { task: args.task, workspace: args.workspace, taskProfile: args.task_profile, model: args.model },
       )
-      runWorkers.set(res.runId, res.workerModel)
+      runWorkers.set(res.runId, { model: res.workerModel, tags: res.taskProfile })
       return ok(formatToolResult(deps.config.runsDir, res.runId, res))
     } catch (e) { return err(e) }
   })
@@ -116,11 +121,14 @@ export function buildServer(deps: ServerDeps): McpServer {
     },
   }, async (args) => {
     try {
-      const model = runWorkers.get(args.run_id) ?? findRunModel(deps.config.runsDir, args.run_id)
-      if (!model) throw new Error(`Unknown run_id "${args.run_id}" — no delegate trace found`)
-      recordOutcome(deps.registryPath, model, args.outcome)
-      appendTrace(deps.config.runsDir, { kind: 'outcome', runId: args.run_id, model, outcome: args.outcome })
-      return ok(JSON.stringify({ recorded: true, model, outcome: args.outcome }))
+      const ref = runWorkers.get(args.run_id) ?? findRun(deps.config.runsDir, args.run_id)
+      if (!ref) throw new Error(`Unknown run_id "${args.run_id}" — no delegate trace found`)
+      const catalog = loadRegistry(deps.registryPath)
+      await withStateLock(deps.statePath, catalog, (s) => ({
+        state: applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome), result: null,
+      }))
+      appendTrace(deps.config.runsDir, { kind: 'outcome', runId: args.run_id, model: ref.model, outcome: args.outcome })
+      return ok(JSON.stringify({ recorded: true, model: ref.model, outcome: args.outcome }))
     } catch (e) { return err(e) }
   })
 
@@ -133,6 +141,7 @@ if (isMain) {
   const server = buildServer({
     config,
     registryPath: process.env.NVAGENTS_REGISTRY ?? defaultRegistryPath(),
+    statePath: process.env.NVAGENTS_STATE ?? defaultStatePath(),
     client: new NimClient(config),
   })
   await server.connect(new StdioServerTransport())
