@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import YAML from 'yaml'
 import { z } from 'zod'
+import { NimError } from '../nim/client'
 import { delegate, type DelegateDeps } from '../pipeline/delegate'
 import { capabilityTagSchema } from '../registry/schema'
 import { withStateLock } from '../registry/state'
@@ -26,6 +27,10 @@ export async function runEvalSuite(
   deps: DelegateDeps,
   opts: { suitePath: string; workspace: string; modelId: string },
 ): Promise<EvalResult> {
+  if (!deps.catalog.models.some((m) => m.id === opts.modelId)) {
+    throw new Error(`Model "${opts.modelId}" is not in the registry. Call list_models.`)
+  }
+
   const suite = suiteSchema.parse(YAML.parse(fs.readFileSync(opts.suitePath, 'utf8')))
   const failures: string[] = []
 
@@ -40,7 +45,8 @@ export async function runEvalSuite(
       })
       const haystack = [res.summary, ...res.changes.map((c) => c.content)].join('\n')
       passedCase = res.status === 'ok' && haystack.includes(testCase.check.contains)
-    } catch {
+    } catch (err) {
+      if (err instanceof NimError) throw err
       passedCase = false
     }
     if (!passedCase) failures.push(testCase.id)
