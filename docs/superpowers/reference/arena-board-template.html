@@ -1,0 +1,353 @@
+<title>NV-AGENTS ARENA — Match Night</title>
+<style>
+  :root {
+    /* ReshapeX app-ui tokens — dark values (dark-first board) */
+    --ui-colors-surface-base: #0D1117;
+    --ui-colors-surface-raised: #1C2128;
+    --ui-colors-surface-inset: #161B22;
+    --ui-colors-text-primary: #FFFFFF;
+    --ui-colors-text-secondary: #8B9AAD;
+    --ui-colors-border-default: #1C2128;
+    --ui-colors-border-subtle: #161B22;
+    --ui-colors-border-strong: #8B9AAD;
+    --ui-colors-accent: #73B400;              /* electric green */
+    --ui-colors-accent-rgb: 115,180,0;
+    --ui-colors-semantic-success: #73B400;
+    --ui-colors-semantic-error: #FF006E;      /* magenta */
+    --ui-colors-semantic-info: #00D9FF;       /* cyan */
+    --ui-colors-semantic-warning: #FFE500;
+    --ui-effects-radius-md: 8px;
+    --ui-effects-radius-lg: 12px;
+    --ui-effects-radius-panel: 16px;
+    --ui-effects-shadow-card: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1);
+    --ui-effects-transition-base: 200ms cubic-bezier(.4,0,.2,1);
+    --ui-typography-heading: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ui-typography-body: Switzer, "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ui-typography-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
+    --ls-eyebrow: 0.12em;
+    --ls-stat: -0.03em;
+    --ls-stat-label: 0.06em;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ui-colors-surface-base: #FFFFFF;
+      --ui-colors-surface-raised: #F5F7FA;
+      --ui-colors-surface-inset: #F0F2F5;
+      --ui-colors-text-primary: #0D1117;
+      --ui-colors-text-secondary: #8494A8;
+      --ui-colors-border-default: #E5E9EC;
+      --ui-colors-border-subtle: #F0F2F5;
+      --ui-colors-border-strong: #8494A8;
+      --ui-colors-accent: #5C9000;
+      --ui-colors-accent-rgb: 92,144,0;
+      --ui-colors-semantic-success: #5C9000;
+      --ui-colors-semantic-error: #90005C;
+      --ui-colors-semantic-info: #005C90;
+      --ui-colors-semantic-warning: #9A8500;
+      --ui-effects-shadow-card: 0 2px 4px -1px rgba(13,17,23,.06), 0 4px 8px -2px rgba(13,17,23,.08);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ui-colors-surface-base: #0D1117; --ui-colors-surface-raised: #1C2128;
+    --ui-colors-surface-inset: #161B22; --ui-colors-text-primary: #FFFFFF;
+    --ui-colors-text-secondary: #8B9AAD; --ui-colors-border-default: #1C2128;
+    --ui-colors-border-subtle: #161B22; --ui-colors-border-strong: #8B9AAD;
+    --ui-colors-accent: #73B400; --ui-colors-accent-rgb: 115,180,0;
+    --ui-colors-semantic-success: #73B400; --ui-colors-semantic-error: #FF006E;
+    --ui-colors-semantic-info: #00D9FF; --ui-colors-semantic-warning: #FFE500;
+    --ui-effects-shadow-card: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1);
+  }
+  :root[data-theme="light"] {
+    --ui-colors-surface-base: #FFFFFF; --ui-colors-surface-raised: #F5F7FA;
+    --ui-colors-surface-inset: #F0F2F5; --ui-colors-text-primary: #0D1117;
+    --ui-colors-text-secondary: #8494A8; --ui-colors-border-default: #E5E9EC;
+    --ui-colors-border-subtle: #F0F2F5; --ui-colors-border-strong: #8494A8;
+    --ui-colors-accent: #5C9000; --ui-colors-accent-rgb: 92,144,0;
+    --ui-colors-semantic-success: #5C9000; --ui-colors-semantic-error: #90005C;
+    --ui-colors-semantic-info: #005C90; --ui-colors-semantic-warning: #9A8500;
+    --ui-effects-shadow-card: 0 2px 4px -1px rgba(13,17,23,.06), 0 4px 8px -2px rgba(13,17,23,.08);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ui-colors-surface-base);
+    color: var(--ui-colors-text-primary);
+    font-family: var(--ui-typography-body);
+    margin: 0; padding: 40px 20px 64px; line-height: 1.5;
+  }
+  .hall { max-width: 1080px; margin: 0 auto; }
+
+  header { padding-bottom: 20px; margin-bottom: 26px; border-bottom: 1px solid var(--ui-colors-border-default); position: relative; }
+  header::after {
+    content: ""; position: absolute; left: 0; bottom: -1px; width: 96px; height: 2px;
+    background: var(--ui-colors-accent);
+  }
+  .eyebrow {
+    font-family: var(--ui-typography-mono); font-size: 11px; letter-spacing: var(--ls-eyebrow);
+    text-transform: uppercase; color: var(--ui-colors-accent); margin: 0 0 8px; font-weight: 600;
+  }
+  h1 {
+    font-family: var(--ui-typography-heading); font-weight: 800;
+    font-size: clamp(34px, 5.4vw, 56px); letter-spacing: -0.02em; line-height: 1.02;
+    margin: 0; text-wrap: balance;
+  }
+  h1 .accent { color: var(--ui-colors-accent); }
+  .venue {
+    display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 12px;
+    font-family: var(--ui-typography-mono); font-size: 12px; color: var(--ui-colors-text-secondary);
+  }
+  .venue b { color: var(--ui-colors-text-primary); font-weight: 600; }
+
+  .floor { display: grid; grid-template-columns: 3fr 2fr; gap: 22px; align-items: start; }
+  @media (max-width: 820px) { .floor { grid-template-columns: 1fr; } }
+
+  section h2 {
+    font-family: var(--ui-typography-heading); text-transform: uppercase;
+    letter-spacing: var(--ls-stat-label); font-size: 13px; font-weight: 700;
+    color: var(--ui-colors-text-secondary); margin: 26px 0 10px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  section h2::after { content: ""; flex: 1; border-top: 1px solid var(--ui-colors-border-default); transform: translateY(-3px); }
+  .col > section:first-child h2 { margin-top: 0; }
+
+  .bout {
+    background: var(--ui-colors-surface-raised);
+    border: 1px solid var(--ui-colors-border-default);
+    border-radius: var(--ui-effects-radius-lg);
+    box-shadow: var(--ui-effects-shadow-card);
+    margin-bottom: 14px; overflow: hidden;
+    transition: border-color var(--ui-effects-transition-base);
+  }
+  .bout-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--ui-colors-border-subtle);
+    font-family: var(--ui-typography-mono); font-size: 11px;
+    letter-spacing: var(--ls-eyebrow); text-transform: uppercase;
+    color: var(--ui-colors-text-secondary);
+  }
+  .bout-head b { color: var(--ui-colors-text-primary); }
+  .card { padding: 12px 16px 14px; }
+
+  .row { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 7px 0; }
+  .row + .row { border-top: 1px solid var(--ui-colors-border-subtle); }
+  .seed { font-family: var(--ui-typography-mono); font-size: 11px; color: var(--ui-colors-text-secondary); text-align: right; }
+  .fighter { font-family: var(--ui-typography-mono); font-size: 13px; overflow-wrap: anywhere; }
+  .row.champ .fighter { color: var(--ui-colors-accent); font-weight: 700; }
+  .row.champ .fighter::after { content: " ▲"; font-size: 10px; }
+  .tale { font-family: var(--ui-typography-mono); font-size: 11px; color: var(--ui-colors-text-secondary); white-space: nowrap; }
+  .delta { font-family: var(--ui-typography-mono); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; min-width: 44px; }
+  .delta.up { color: var(--ui-colors-semantic-success); }
+  .delta.down { color: var(--ui-colors-semantic-error); }
+  .delta.flat { color: var(--ui-colors-text-secondary); }
+  .forfeit { color: var(--ui-colors-semantic-error); }
+
+  .judges {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ui-colors-border-subtle);
+    display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+    font-family: var(--ui-typography-mono); font-size: 11px; color: var(--ui-colors-text-secondary);
+  }
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 9999px; font-size: 10px;
+    letter-spacing: var(--ls-stat-label); text-transform: uppercase; font-weight: 700;
+    font-family: var(--ui-typography-body);
+  }
+  .badge.unan { background: rgba(var(--ui-colors-accent-rgb), .12); color: var(--ui-colors-accent); border: 1px solid rgba(var(--ui-colors-accent-rgb), .35); }
+  .badge.solo { border: 1px solid var(--ui-colors-border-strong); color: var(--ui-colors-text-secondary); }
+  .badge.dq { background: color-mix(in srgb, var(--ui-colors-semantic-error) 12%, transparent); color: var(--ui-colors-semantic-error); border: 1px solid var(--ui-colors-semantic-error); }
+  .badge.clean { border: 1px solid var(--ui-colors-semantic-success); color: var(--ui-colors-semantic-success); }
+
+  .inquiry { border-color: color-mix(in srgb, var(--ui-colors-semantic-error) 45%, transparent); }
+  .inquiry .bout-head { color: var(--ui-colors-semantic-error); border-bottom-color: color-mix(in srgb, var(--ui-colors-semantic-error) 30%, transparent); }
+  .inquiry .bout-head b { color: var(--ui-colors-semantic-error); }
+  .inquiry p { margin: 8px 0 0; font-size: 13.5px; max-width: 62ch; }
+  .evidence { font-family: var(--ui-typography-mono); font-size: 11.5px; color: var(--ui-colors-text-secondary); }
+
+  .counter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .counter {
+    background: var(--ui-colors-surface-inset);
+    border: 1px solid var(--ui-colors-border-default);
+    border-radius: var(--ui-effects-radius-md);
+    padding: 14px 16px 12px;
+  }
+  .counter .num {
+    font-family: var(--ui-typography-heading); font-size: clamp(26px, 3.2vw, 34px);
+    font-weight: 800; font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-stat); line-height: 1;
+  }
+  .counter .num.accent { color: var(--ui-colors-accent); }
+  .counter .lbl {
+    font-family: var(--ui-typography-mono); font-size: 10px;
+    letter-spacing: var(--ls-stat-label); text-transform: uppercase;
+    color: var(--ui-colors-text-secondary); margin-top: 7px;
+  }
+  .counter.wide { grid-column: 1 / -1; }
+
+  .ladder {
+    background: var(--ui-colors-surface-raised);
+    border: 1px solid var(--ui-colors-border-default);
+    border-radius: var(--ui-effects-radius-lg);
+    padding: 13px 16px; margin-bottom: 12px;
+  }
+  .ladder h3 {
+    margin: 0 0 8px; font-family: var(--ui-typography-mono); font-size: 11px;
+    letter-spacing: var(--ls-eyebrow); text-transform: uppercase;
+    color: var(--ui-colors-text-secondary); font-weight: 600;
+  }
+  .lrow { display: grid; grid-template-columns: 16px 1fr 52px; gap: 8px; align-items: center; padding: 4px 0; font-family: var(--ui-typography-mono); font-size: 12px; }
+  .lrow .r { color: var(--ui-colors-text-secondary); font-size: 11px; }
+  .lrow .elo { text-align: right; font-variant-numeric: tabular-nums; }
+  .lrow:first-of-type .name, .lrow:first-of-type .elo { color: var(--ui-colors-accent); font-weight: 700; }
+  .bar { grid-column: 2 / 4; height: 4px; background: var(--ui-colors-surface-inset); border-radius: 9999px; overflow: hidden; margin-bottom: 3px; }
+  .bar i { display: block; height: 100%; background: var(--ui-colors-accent); opacity: .55; }
+  .lrow:first-of-type + .bar i { opacity: 1; }
+
+  .record { display: flex; gap: 10px; font-family: var(--ui-typography-mono); font-size: 12px; flex-wrap: wrap; }
+  .record span {
+    padding: 5px 12px; border: 1px solid var(--ui-colors-border-default);
+    border-radius: 9999px; background: var(--ui-colors-surface-inset);
+  }
+  .record .w { color: var(--ui-colors-semantic-success); }
+  .record .rw { color: var(--ui-colors-semantic-warning); }
+  .record .l { color: var(--ui-colors-semantic-error); }
+
+  footer {
+    margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--ui-colors-border-default);
+    font-family: var(--ui-typography-mono); font-size: 11px;
+    color: var(--ui-colors-text-secondary); max-width: 78ch;
+  }
+  footer b { color: var(--ui-colors-text-primary); font-weight: 600; }
+  @media (prefers-reduced-motion: no-preference) {
+    .bout, .counter, .ladder { animation: rise .45s cubic-bezier(.4,0,.2,1) both; }
+    .bout:nth-child(3) { animation-delay: .06s; } .bout:nth-child(4) { animation-delay: .12s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+
+<div class="hall">
+<header>
+  <p class="eyebrow">nv-agents · blind model tournaments · NVIDIA NIM free endpoints</p>
+  <h1>Arena <span class="accent">/</span> Match Night</h1>
+  <div class="venue">
+    <span>VENUE <b>claude-code-nvidia-agents</b></span>
+    <span>DATE <b>2026-07-03</b></span>
+    <span>SANCTIONED BY <b>Claude (orchestrator &amp; only write path)</b></span>
+    <span>PURSE <b>$0.00</b></span>
+  </div>
+</header>
+
+<div class="floor">
+<div class="col">
+  <section>
+    <h2>Tonight's card</h2>
+
+    <div class="bout">
+      <div class="bout-head"><span>Bout I · <b>Research</b></span><span>docs/ARCHITECTURE.md</span></div>
+      <div class="card">
+        <div class="row champ"><span class="seed">1</span><span class="fighter">mistralai/mistral-large-3</span><span class="tale">3 req · 18.2k tok read</span><span class="delta up">+32</span></div>
+        <div class="row"><span class="seed">2</span><span class="fighter">z-ai/glm-5.2</span><span class="tale">8 req · 104.1k tok read</span><span class="delta flat">±0</span></div>
+        <div class="row"><span class="seed">3</span><span class="fighter">qwen/qwen3.5-122b</span><span class="tale">8 req · 103.9k tok read</span><span class="delta down">−32</span></div>
+        <div class="judges">JUDGES&nbsp; deepseek-v4-pro · nemotron-super-49b <span class="badge unan">Unanimous</span><span>the winner read the least and synthesized best</span></div>
+      </div>
+    </div>
+
+    <div class="bout inquiry">
+      <div class="bout-head"><span>Bout II · <b>Review</b></span><span>security audit — RESULT OVERTURNED</span></div>
+      <div class="card">
+        <div class="row"><span class="seed">1</span><span class="fighter">mistralai/mistral-large-3</span><span class="tale">won on forfeit, then…</span><span class="delta down">DQ</span></div>
+        <div class="row"><span class="seed">2</span><span class="fighter">nvidia/nemotron-super-49b</span><span class="tale forfeit">forfeit — refused tool calls</span><span class="delta down">−16</span></div>
+        <div class="judges">JUDGE&nbsp; deepseek-v4-pro <span class="badge solo">Solo panel</span><span class="badge dq">Stewards' inquiry</span></div>
+        <p>The "winning" audit quoted code that does not exist — a bash <span class="evidence">execFile</span> injection in a repo that spawns no processes, an Express endpoint on a stdio server, a hardcoded API key that was never written. Two requests, barely any reading, eleven fabricated findings. The lone judge passed it; judges can't grep.</p>
+        <p><b>Claude's review rejected the result</b> (−16, record marked). Redemption run: <span class="evidence">z-ai/glm-5.2</span> re-ran the audit reading 287k tokens across 27 files — every quote mechanically verified against source. <span class="badge clean">0 critical · 0 high</span></p>
+      </div>
+    </div>
+
+    <div class="bout">
+      <div class="bout-head"><span>Bout III · <b>Code-gen / Long-context</b></span><span>README.md</span></div>
+      <div class="card">
+        <div class="row champ"><span class="seed">1</span><span class="fighter">z-ai/glm-5.2</span><span class="tale">6 req · 68.8k tok read</span><span class="delta up">+16</span></div>
+        <div class="row"><span class="seed">2</span><span class="fighter">qwen/qwen3.5-397b</span><span class="tale">5 req · 53.4k tok read</span><span class="delta down">−16</span></div>
+        <div class="judges">JUDGES&nbsp; deepseek-v4-pro · mistral-large-3 <span class="badge unan">Unanimous</span><span>judges cited 4 specific accuracy faults in the loser's entry</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Season record — orchestrator verdicts</h2>
+    <div class="record">
+      <span class="w">1 accepted</span>
+      <span class="rw">5 reworked</span>
+      <span class="l">1 rejected</span>
+      <span>1 no-contest (all-forfeit, NVIDIA outage)</span>
+    </div>
+  </section>
+</div>
+
+<div class="col">
+  <section>
+    <h2>Frontier tokens not spent</h2>
+    <div class="counter-grid">
+      <div class="counter wide">
+        <div class="num accent">814,972</div>
+        <div class="lbl">NIM tokens burned across 21 runs · 752.9k in / 62.1k out</div>
+      </div>
+      <div class="counter">
+        <div class="num">$3.19</div>
+        <div class="lbl">Sonnet-equivalent saved</div>
+      </div>
+      <div class="counter">
+        <div class="num">$15.95</div>
+        <div class="lbl">Opus-equivalent saved</div>
+      </div>
+      <div class="counter">
+        <div class="num">113</div>
+        <div class="lbl">API requests</div>
+      </div>
+      <div class="counter">
+        <div class="num accent">$0.00</div>
+        <div class="lbl">Actually paid</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Elo ladders</h2>
+    <div class="ladder">
+      <h3>Research</h3>
+      <div class="lrow"><span class="r">1</span><span class="name">mistral-large-3</span><span class="elo">1028</span></div>
+      <div class="bar"><i style="width:100%"></i></div>
+      <div class="lrow"><span class="r">2</span><span class="name">glm-5.2</span><span class="elo">1000</span></div>
+      <div class="bar"><i style="width:72%"></i></div>
+      <div class="lrow"><span class="r">3</span><span class="name">qwen3.5-122b</span><span class="elo">968</span></div>
+      <div class="bar"><i style="width:44%"></i></div>
+    </div>
+    <div class="ladder">
+      <h3>Code-gen</h3>
+      <div class="lrow"><span class="r">1</span><span class="name">glm-5.2</span><span class="elo">1012</span></div>
+      <div class="bar"><i style="width:100%"></i></div>
+      <div class="lrow"><span class="r">2</span><span class="name">qwen3.5-397b</span><span class="elo">984</span></div>
+      <div class="bar"><i style="width:58%"></i></div>
+    </div>
+    <div class="ladder">
+      <h3>Review</h3>
+      <div class="lrow"><span class="r">1</span><span class="name">mistral-large-3</span><span class="elo">1000</span></div>
+      <div class="bar"><i style="width:100%"></i></div>
+      <div class="lrow"><span class="r">2</span><span class="name">glm-5.2</span><span class="elo">996</span></div>
+      <div class="bar"><i style="width:88%"></i></div>
+      <div class="lrow"><span class="r">3</span><span class="name">nemotron-super-49b</span><span class="elo">984</span></div>
+      <div class="bar"><i style="width:62%"></i></div>
+    </div>
+  </section>
+</div>
+</div>
+
+<footer>
+  <b>How to read this board.</b> Every bout is a blind tournament: contestants explore the repo
+  read-only and submit entries; a judge panel of models excluded from the contest ranks
+  anonymized labels A/B/C. Elo (K=32) updates per capability tag; infra failures are
+  no-contests, task failures are last-place losses, and Claude's post-review verdict
+  (accepted / reworked / rejected) nudges ratings after the fact — which is how Bout II's
+  fabricated audit cost its "winner" the points back. Ratings live in
+  <b>~/.nv-agents/state.json</b>; deliverables shipped tonight: README.md,
+  docs/ARCHITECTURE.md, docs/AUDIT-2026-07-03.md.
+</footer>
+</div>
