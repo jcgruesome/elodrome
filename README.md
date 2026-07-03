@@ -49,7 +49,14 @@ pnpm install
 export NVIDIA_API_KEY=...   # from build.nvidia.com (no charge); elodrome fails fast if unset
 ```
 
-Register the server with Claude Code by adding it to your project's `.mcp.json`:
+Register the server with Claude Code by copying `.mcp.json.example` to `.mcp.json`
+and filling in the repo path (`.mcp.json` is git-ignored so your local path never
+gets committed):
+
+```bash
+cp .mcp.json.example .mcp.json
+# then edit .mcp.json, replacing /path/to/this/repo with this repo's absolute path
+```
 
 ```json
 {

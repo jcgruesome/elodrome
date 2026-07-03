@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "elodrome": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "cd /path/to/this/repo && set -a && { [ -f .env ] && . ./.env; }; set +a; exec pnpm mcp"
+      ]
+    }
+  }
+}
