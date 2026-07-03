@@ -69,9 +69,15 @@ describe('createVerifyWorktree / removeVerifyWorktree', () => {
     git(root, 'add', '.')
     git(root, 'commit', '-q', '-m', 'bad config')
     await expect(createVerifyWorktree(root)).rejects.not.toThrow(VerifySkippedError)
-    // and it must not leak the worktree directory it created before failing
-    const before = fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('elodrome-verify-'))
-    expect(before).toHaveLength(0)
+    // Check this test's OWN repo's registered worktrees, not the shared OS tmpdir —
+    // other test files legitimately have in-flight worktrees under the same
+    // "elodrome-verify-" prefix at the same instant under vitest's default
+    // cross-file parallelism, which makes any assertion against the shared tmpdir
+    // inherently racy. `git worktree list` scoped to this repo only ever reflects
+    // worktrees this exact repo registered, so it's race-free.
+    const list = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root }).toString()
+    const worktreeCount = list.split('\n\n').filter((block) => block.trim().length > 0).length
+    expect(worktreeCount).toBe(1)
   })
 })
 
