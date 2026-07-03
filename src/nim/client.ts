@@ -35,6 +35,19 @@ export class NimError extends Error {
 
 const MAX_429_RETRIES = 3
 
+function errorDetail(err: unknown): string | undefined {
+  try {
+    const body = (err as { error?: unknown }).error
+    if (body === undefined) return undefined
+    const b = body as { detail?: unknown; title?: unknown }
+    if (typeof b.detail === 'string') return b.detail
+    if (typeof b.title === 'string') return b.title
+    return JSON.stringify(body).slice(0, 300)
+  } catch {
+    return undefined
+  }
+}
+
 export class NimClient {
   constructor(
     cfg: Config,
@@ -66,9 +79,10 @@ export class NimClient {
           continue
         }
         if (err instanceof NimError) throw err
+        const detail = errorDetail(err)
         throw new NimError(
           `NIM request to "${params.model}" failed${status ? ` (HTTP ${status})` : ''}: `
-          + `${(err as Error).message}`, status,
+          + `${(err as Error).message}${detail ? ` — ${detail}` : ''}`, status,
         )
       }
     }

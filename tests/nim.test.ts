@@ -75,4 +75,16 @@ describe('NimClient', () => {
     await expect(client.chat({ model: 'gone', messages: [] }))
       .rejects.toThrow(/gone.*not found.*list_models/s)
   })
+
+  it('surfaces response body detail on unexpected errors', async () => {
+    const create = async () => {
+      throw Object.assign(new Error('400 status code (no body)'), {
+        status: 400,
+        error: { status: 400, title: 'Bad Request', detail: 'DEGRADED function cannot be invoked' },
+      })
+    }
+    const client = new NimClient(cfg, new RateLimiter(100), fakeApi(create))
+    await expect(client.chat({ model: 'm', messages: [] }))
+      .rejects.toThrow(/DEGRADED function/)
+  })
 })
