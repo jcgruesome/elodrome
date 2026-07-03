@@ -9,7 +9,7 @@ import { loadConfig } from '../src/config'
 import { buildServer, formatToolResult } from '../src/mcp/server'
 import type { ChatResult } from '../src/nim/client'
 import { loadRegistry } from '../src/registry/registry'
-import { loadState, saveState } from '../src/registry/state'
+import { getRating, loadState, saveState } from '../src/registry/state'
 
 let workspace: string
 let registryPath: string
@@ -21,6 +21,7 @@ version: 1
 models:
   - { id: w/coder, name: W, tags: [code-gen], contextWindow: 128000, toolCalling: reliable }
   - { id: w/coder2, name: W2, tags: [code-gen], contextWindow: 128000, toolCalling: reliable }
+  - { id: w/coder3, name: W3, tags: [code-gen], contextWindow: 128000, toolCalling: reliable }
   - { id: r/rev, name: R, tags: [review], contextWindow: 64000, toolCalling: none }
 `
 
@@ -117,6 +118,23 @@ describe('mcp server', () => {
     })
     expect((res as { isError?: boolean }).isError).toBe(true)
     expect(textOf(res)).toMatch(/outside/i)
+  })
+
+  it('leaderboard tool returns ranked sections', async () => {
+    const mcp = await connect([])
+    const res = await mcp.callTool({ name: 'leaderboard', arguments: {} })
+    const parsed = JSON.parse(textOf(res)) as { sections: Array<{ tag: string }> }
+    expect(Array.isArray(parsed.sections)).toBe(true)
+  })
+
+  it('report_outcome nudges elo on the run profile tags', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({ name: 'delegate', arguments: { task: 't', workspace, task_profile: ['code-gen'] } })
+    const { runId } = JSON.parse(textOf(res)) as { runId: string }
+    await mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } })
+    const state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder']?.outcomes.accepted).toBe(1)
+    expect(getRating(state, 'w/coder', 'code-gen').elo).toBe(1208) // planted 1200 + 8
   })
 })
 

@@ -11,6 +11,7 @@ import {
 } from '../registry/registry'
 import { capabilityTagSchema, type CapabilityTag } from '../registry/schema'
 import { applyOutcome } from '../arena/elo'
+import { buildLeaderboard } from '../registry/leaderboard'
 import { defaultStatePath, loadState, withStateLock } from '../registry/state'
 import { appendTrace, findRun } from '../trace/trace'
 
@@ -60,13 +61,19 @@ export function buildServer(deps: ServerDeps): McpServer {
     inputSchema: {},
   }, async () => {
     try {
-      const registry = loadRegistry(deps.registryPath)
-      const state = loadState(deps.statePath, registry)
-      const models = registry.models.map((m) => ({
-        id: m.id, name: m.name, tags: m.tags, contextWindow: m.contextWindow,
-        toolCalling: m.toolCalling, evalScore: m.evalScore ?? null,
-        winRate: winRate(state.models[m.id]?.outcomes ?? { accepted: 0, reworked: 0, rejected: 0 }),
-      }))
+      const catalog = loadRegistry(deps.registryPath)
+      const state = loadState(deps.statePath, catalog)
+      const models = catalog.models.map((m) => {
+        const ms = state.models[m.id]
+        return {
+          id: m.id, name: m.name, tags: m.tags, contextWindow: m.contextWindow,
+          toolCalling: m.toolCalling,
+          evalScore: ms?.evalScore ?? null,
+          winRate: winRate(ms?.outcomes ?? { accepted: 0, reworked: 0, rejected: 0 }),
+          ratings: ms?.ratings ?? {},
+          availabilityStrikes: ms?.availabilityStrikes ?? 0,
+        }
+      })
       return ok(JSON.stringify({ models }))
     } catch (e) { return err(e) }
   })
@@ -111,6 +118,19 @@ export function buildServer(deps: ServerDeps): McpServer {
     } catch (e) { return err(e) }
   })
 
+  server.registerTool('leaderboard', {
+    description: 'Per-repo model leaderboard: Elo ratings and match counts per capability tag, '
+      + 'built from tournament results and outcome reports. Use it to see which models earn '
+      + 'their routing.',
+    inputSchema: { tag: capabilityTagSchema.optional() },
+  }, async (args) => {
+    try {
+      const catalog = loadRegistry(deps.registryPath)
+      const state = loadState(deps.statePath, catalog)
+      return ok(JSON.stringify({ sections: buildLeaderboard(catalog, state, args.tag) }))
+    } catch (e) { return err(e) }
+  })
+
   server.registerTool('report_outcome', {
     description: 'REQUIRED after every delegate call, once you have reviewed the result: '
       + 'record whether you accepted the output as-is, reworked it, or rejected it. '
@@ -127,7 +147,9 @@ export function buildServer(deps: ServerDeps): McpServer {
       await withStateLock(deps.statePath, catalog, (s) => ({
         state: applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome), result: null,
       }))
-      appendTrace(deps.config.runsDir, { kind: 'outcome', runId: args.run_id, model: ref.model, outcome: args.outcome })
+      appendTrace(deps.config.runsDir, {
+        kind: 'outcome', runId: args.run_id, model: ref.model, tags: ref.tags, outcome: args.outcome,
+      })
       return ok(JSON.stringify({ recorded: true, model: ref.model, outcome: args.outcome }))
     } catch (e) { return err(e) }
   })
