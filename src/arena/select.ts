@@ -1,3 +1,4 @@
+import { scrubModelNames } from './judge'
 import type { CapabilityTag, ModelEntry, Registry } from '../registry/schema'
 import { getRating, type NvState } from '../registry/state'
 
@@ -57,4 +58,24 @@ export function selectJudges(catalog: Registry, state: NvState, excludeIds: stri
     throw new Error('No review-tagged models available to judge (all are contestants or none exist)')
   }
   return judges
+}
+
+const BRIEFING_NOTES = 3
+
+export function buildBriefing(
+  state: NvState,
+  modelId: string,
+  profile: CapabilityTag[],
+  scrubNames: string[],
+): string | undefined {
+  const learnings = state.models[modelId]?.learnings ?? []
+  const eligible = learnings.filter(
+    (l) => l.tags.length === 0 || l.tags.some((t) => (profile as string[]).includes(t)),
+  )
+  if (eligible.length === 0) return undefined
+  return eligible
+    .slice(-BRIEFING_NOTES)
+    .reverse()
+    .map((l) => `- ${scrubModelNames(l.note, scrubNames)}`)
+    .join('\n')
 }

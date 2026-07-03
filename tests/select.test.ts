@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decide, eligibleModels, selectJudges } from '../src/arena/select'
+import { buildBriefing, decide, eligibleModels, selectJudges } from '../src/arena/select'
 import type { Registry } from '../src/registry/schema'
 import type { NvState } from '../src/registry/state'
 
@@ -70,5 +70,46 @@ describe('selection', () => {
     const state = stateWith({ 'd/judge': { elo: 1000, matches: 0 } })
     expect(selectJudges(catalog, state, ['a/one']).map((j) => j.id)).toEqual(['d/judge'])
     expect(() => selectJudges(catalog, state, ['d/judge'])).toThrow(/review/i)
+  })
+})
+
+function stateWithLearnings(notes: Array<{ note: string; tags: string[]; ts: string }>): NvState {
+  return {
+    version: 1,
+    judgeAgreement: { agree: 0, total: 0 },
+    models: {
+      'a/one': {
+        ratings: {}, outcomes: { accepted: 0, reworked: 0, rejected: 0 },
+        availabilityStrikes: 0,
+        learnings: notes.map((n) => ({ ...n })),
+      },
+    },
+  }
+}
+
+describe('buildBriefing', () => {
+  it('returns latest 3 tag-eligible notes newest first, scrubbed', () => {
+    const s = stateWithLearnings([
+      { note: 'oldest code note', tags: ['code-gen'], ts: '1' },
+      { note: 'research-only note', tags: ['research'], ts: '2' },
+      { note: 'untagged note applies anywhere', tags: [], ts: '3' },
+      { note: 'newer code note', tags: ['code-gen'], ts: '4' },
+      { note: 'mentions a/one by name', tags: ['code-gen'], ts: '5' },
+    ])
+    const b = buildBriefing(s, 'a/one', ['code-gen'], ['a/one'])
+    expect(b).toBeDefined()
+    const lines = b!.split('\n')
+    expect(lines).toHaveLength(3)
+    expect(lines[0]).toBe('- mentions [model] by name')
+    expect(lines[1]).toBe('- newer code note')
+    expect(lines[2]).toBe('- untagged note applies anywhere')
+    expect(b).not.toContain('research-only')
+  })
+
+  it('returns undefined for no notes or no eligible notes', () => {
+    expect(buildBriefing(stateWithLearnings([]), 'a/one', ['code-gen'], [])).toBeUndefined()
+    const onlyResearch = stateWithLearnings([{ note: 'research-only note', tags: ['research'], ts: '1' }])
+    expect(buildBriefing(onlyResearch, 'a/one', ['code-gen'], [])).toBeUndefined()
+    expect(buildBriefing(onlyResearch, 'missing/model', ['code-gen'], [])).toBeUndefined()
   })
 })
