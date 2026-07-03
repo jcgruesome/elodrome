@@ -1,11 +1,27 @@
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { Registry } from '../src/registry/schema'
 import {
   defaultStatePath, getRating, loadState, saveState, withStateLock,
 } from '../src/registry/state'
+
+const fixturePath = fileURLToPath(new URL('./fixtures/lock-stress.mts', import.meta.url))
+
+function runStressChild(statePath: string, iterations: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', fixturePath, statePath, String(iterations)],
+      { stdio: 'inherit' },
+    )
+    child.on('error', reject)
+    child.on('exit', (code) => resolve(code ?? -1))
+  })
+}
 
 const catalog: Registry = {
   version: 1,
@@ -92,7 +108,7 @@ describe('state store', () => {
     expect(result).toBe('done')
   })
 
-  it('stale lock reclaim admits exactly one winner', async () => {
+  it('sequential waiters both apply their update', async () => {
     const p = tmpState()
     const lockDir = `${p}.lock`
     fs.mkdirSync(lockDir, { recursive: true })
@@ -117,4 +133,43 @@ describe('state store', () => {
     const leftovers = fs.readdirSync(dir).filter((name) => name.includes('.lock') || name.includes('.reclaim-'))
     expect(leftovers).toEqual([])
   })
+
+  it('cross-process contention loses no updates', async () => {
+    const p = tmpState()
+    const [codeA, codeB] = await Promise.all([
+      runStressChild(p, 25),
+      runStressChild(p, 25),
+    ])
+    expect(codeA).toBe(0)
+    expect(codeB).toBe(0)
+
+    const state = loadState(p, catalog)
+    expect(state.models['stress/model']?.availabilityStrikes).toBe(50)
+
+    const dir = path.dirname(p)
+    const leftovers = fs.readdirSync(dir).filter((name) => name.includes('.lock') || name.includes('.reclaim-'))
+    expect(leftovers).toEqual([])
+  }, 30_000)
+
+  it('cross-process contention reclaims a pre-existing stale lock without losing updates', async () => {
+    const p = tmpState()
+    const lockDir = `${p}.lock`
+    fs.mkdirSync(lockDir, { recursive: true })
+    const old = Date.now() / 1000 - 60
+    fs.utimesSync(lockDir, old, old)
+
+    const [codeA, codeB] = await Promise.all([
+      runStressChild(p, 25),
+      runStressChild(p, 25),
+    ])
+    expect(codeA).toBe(0)
+    expect(codeB).toBe(0)
+
+    const state = loadState(p, catalog)
+    expect(state.models['stress/model']?.availabilityStrikes).toBe(50)
+
+    const dir = path.dirname(p)
+    const leftovers = fs.readdirSync(dir).filter((name) => name.includes('.lock') || name.includes('.reclaim-'))
+    expect(leftovers).toEqual([])
+  }, 30_000)
 })

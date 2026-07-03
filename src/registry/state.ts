@@ -89,10 +89,14 @@ export async function withStateLock<T>(
   fn: (state: NvState) => { state: NvState; result: T },
 ): Promise<T> {
   const lockDir = `${statePath}.lock`
+  const ownerPath = path.join(lockDir, 'owner')
   fs.mkdirSync(path.dirname(statePath), { recursive: true })
+  let token = ''
   for (let i = 0; ; i++) {
     try {
       fs.mkdirSync(lockDir)
+      token = `${process.pid}.${crypto.randomBytes(8).toString('hex')}`
+      fs.writeFileSync(ownerPath, token)
       break
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
@@ -118,6 +122,15 @@ export async function withStateLock<T>(
     saveState(statePath, state)
     return result
   } finally {
-    fs.rmdirSync(lockDir)
+    let ownedByUs = false
+    try {
+      ownedByUs = fs.readFileSync(ownerPath, 'utf8') === token
+    } catch {
+      // owner file missing: the lock dir was reclaimed by another process; nothing to unwind
+      ownedByUs = false
+    }
+    if (ownedByUs) {
+      fs.rmSync(lockDir, { recursive: true, force: true })
+    }
   }
 }
