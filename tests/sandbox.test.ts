@@ -31,7 +31,10 @@ describe('validateWorkspace', () => {
 describe('Sandbox.resolve', () => {
   it('resolves normal files', () => {
     const sbx = new Sandbox(root)
-    expect(sbx.resolve('src/app.ts')).toBe(path.join(root, 'src/app.ts'))
+    // resolve() returns the realpath-canonicalized location (closes a TOCTOU
+    // gap — see sandbox.ts), which can differ from the lexical `root` when an
+    // ancestor directory is itself a symlink (e.g. macOS's /tmp).
+    expect(sbx.resolve('src/app.ts')).toBe(fs.realpathSync(path.join(root, 'src/app.ts')))
   })
   it('blocks escapes', () => {
     const sbx = new Sandbox(root)
@@ -80,5 +83,22 @@ describe('Sandbox.resolve', () => {
     const sbx = new Sandbox(root)
     expect(() => sbx.resolve('escape-link.txt')).toThrow(SandboxError)
     expect(() => sbx.resolve('escape-dir/secret.txt')).toThrow(SandboxError)
+  })
+  it('returns the realpath for symlinks that stay inside root, closing the TOCTOU window', () => {
+    // resolve() must hand back the *validated* (symlink-free) location, not
+    // the lexical one — otherwise a symlink swapped after validation but
+    // before the caller's read/stat could redirect past the check.
+    const targetDir = path.join(root, 'real-target')
+    fs.mkdirSync(targetDir, { recursive: true })
+    fs.writeFileSync(path.join(targetDir, 'inner.txt'), 'safe')
+
+    const linkPath = path.join(root, 'inside-link')
+    if (fs.existsSync(linkPath)) fs.unlinkSync(linkPath)
+    fs.symlinkSync(targetDir, linkPath)
+
+    const sbx = new Sandbox(root)
+    const resolved = sbx.resolve('inside-link/inner.txt')
+    expect(resolved).toBe(fs.realpathSync(path.join(targetDir, 'inner.txt')))
+    expect(resolved).not.toContain('inside-link')
   })
 })
