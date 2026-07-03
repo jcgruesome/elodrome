@@ -138,7 +138,7 @@ export async function runJudgePanel(
     ])),
     issues: Object.fromEntries(labels.map((l) => [l, verdicts.flatMap((v) => v.issues[l] ?? [])])),
     judges: used,
-    agreement: verdicts.length < 2
+    agreement: verdicts.length !== 2
       ? null
       : JSON.stringify(verdicts[0]!.ranking) === JSON.stringify(verdicts[1]!.ranking),
     usage,
