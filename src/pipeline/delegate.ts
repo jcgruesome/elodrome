@@ -91,12 +91,17 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
         kind: 'tournament', runId, status: 'aborted', taskProfile: req.taskProfile,
         contestants: decision.contestants.map((c) => c.id), forfeits: err.forfeits,
       })
-      await withStateLock(deps.statePath, deps.catalog, (s) => ({
-        state: err.forfeits
-          .filter((f) => f.kind === 'no_contest')
-          .reduce((acc, f) => addAvailabilityStrike(acc, f.model), s),
-        result: null,
-      }))
+      try {
+        await withStateLock(deps.statePath, deps.catalog, (s) => ({
+          state: err.forfeits
+            .filter((f) => f.kind === 'no_contest')
+            .reduce((acc, f) => addAvailabilityStrike(acc, f.model), s),
+          result: null,
+        }))
+      } catch (lockErr) {
+        // The abort must surface as-is; note the strike-recording failure on it.
+        err.message += ` (strike recording failed: ${(lockErr as Error).message})`
+      }
     }
     throw err
   }
