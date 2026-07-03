@@ -229,6 +229,36 @@ describe('mcp server', () => {
     expect((unknown as { isError?: boolean }).isError).toBe(true)
   })
 
+  it('report_outcome rejects a learning note that normalizes below the minimum length, without corrupting state', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({ name: 'delegate', arguments: { task: 't', workspace, task_profile: ['code-gen'] } })
+    const { runId } = JSON.parse(textOf(res)) as { runId: string }
+    // "abc\n\ncde" is exactly 8 chars (passes the zod min(8) input check) but
+    // normalizeNote's newline-collapsing turns it into "abc cde" — 7 chars.
+    const result = await mcp.callTool({
+      name: 'report_outcome',
+      arguments: { run_id: runId, outcome: 'reworked', learning: 'abc\n\ncde' },
+    })
+    expect((result as { isError?: boolean }).isError).toBe(true)
+    expect(textOf(result)).toMatch(/too short/i)
+    const state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder']?.learnings).toHaveLength(0)
+    // The outcome itself must not have been applied either — the whole call failed cleanly.
+    expect(state.models['w/coder']?.outcomes.reworked).toBe(0)
+  })
+
+  it('record_learning rejects a note that normalizes below the minimum length, without corrupting state', async () => {
+    const mcp = await connect([])
+    const result = await mcp.callTool({
+      name: 'record_learning',
+      arguments: { model: 'w/coder2', note: 'abc\n\ncde' },
+    })
+    expect((result as { isError?: boolean }).isError).toBe(true)
+    expect(textOf(result)).toMatch(/too short/i)
+    const state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder2']?.learnings).toHaveLength(0)
+  })
+
   it('record_learning strips embedded newlines from the note before storing', async () => {
     const mcp = await connect([])
     await mcp.callTool({

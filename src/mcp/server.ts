@@ -14,7 +14,9 @@ import {
   addLearning, applyOutcome, forgetLearnings, type Outcome,
 } from '../arena/elo'
 import { buildLeaderboard } from '../registry/leaderboard'
-import { defaultStatePath, loadState, withStateLock } from '../registry/state'
+import {
+  defaultStatePath, learningSchema, loadState, withStateLock,
+} from '../registry/state'
 import { appendTrace, findRun, hasOutcome } from '../trace/trace'
 
 const MAX_INLINE_CHARS = 20_000
@@ -55,8 +57,18 @@ function err(e: unknown) {
 
 // Learning notes are rendered one-bullet-per-line in buildBriefing; strip embedded
 // newlines so a note can never inject an extra bullet or break that formatting.
+// Callers pass args already validated against the min(8)/max(300) zod bounds, but
+// collapsing newlines can shrink the string further — e.g. "abc\n\ncde" is 8 chars
+// (passes the input check) but normalizes to "abc cde" (7 chars). Re-validate the
+// *normalized* result against the same bounds (learningSchema's own note field, so
+// this can never drift out of sync with it) and fail loudly rather than let
+// addLearning/saveState persist a note that the next loadState() can't parse.
 function normalizeNote(note: string): string {
-  return note.replace(/\s*\n+\s*/g, ' ').trim()
+  const normalized = note.replace(/\s*\n+\s*/g, ' ').trim()
+  if (!learningSchema.shape.note.safeParse(normalized).success) {
+    throw new Error('learning note became too short after removing newlines — provide more detail')
+  }
+  return normalized
 }
 
 export function buildServer(deps: ServerDeps): McpServer {
