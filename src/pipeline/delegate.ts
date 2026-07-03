@@ -1,11 +1,11 @@
 import type { Config } from '../config'
 import type { NimClient } from '../nim/client'
-import { validateChanges, type ValidatedChange } from '../patch/validate'
+import { invalidReasons, validateChanges, type ValidatedChange } from '../patch/validate'
 import { selectModel } from '../registry/registry'
 import type { CapabilityTag, ModelEntry, Registry } from '../registry/schema'
 import { Sandbox, validateWorkspace } from '../sandbox/sandbox'
 import { appendTrace, newRunId } from '../trace/trace'
-import { runWorkerLoop, type WorkerStats } from '../worker/loop'
+import { addStats, runWorkerLoop, type WorkerStats } from '../worker/loop'
 import { runCritique, type Critique } from './critique'
 
 export interface DelegateRequest {
@@ -41,12 +41,6 @@ export interface DelegateResponse {
   statsBreakdown: StatsBreakdown
 }
 
-const addStats = (a: WorkerStats, b: WorkerStats): WorkerStats => ({
-  requests: a.requests + b.requests,
-  promptTokens: a.promptTokens + b.promptTokens,
-  completionTokens: a.completionTokens + b.completionTokens,
-})
-
 export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promise<DelegateResponse> {
   const root = validateWorkspace(req.workspace, deps.launchDir)
   const sandbox = new Sandbox(root)
@@ -74,9 +68,6 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
 
   let round = await attempt(req.task, undefined)
   let revised = false
-
-  const invalidReasons = (changes: ValidatedChange[]) =>
-    changes.filter((c) => !c.valid).map((c) => `invalid patch for ${c.path}: ${c.reason}`)
 
   const problems = [...round.critique.verdict === 'fail' ? round.critique.issues : [], ...invalidReasons(round.changes)]
   if (problems.length > 0) {

@@ -28,3 +28,7 @@ function validateOne(sandbox: Sandbox, change: Change): ValidatedChange {
   }
   return { ...change, valid: true }
 }
+
+export function invalidReasons(changes: ValidatedChange[]): string[] {
+  return changes.filter((c) => !c.valid).map((c) => `invalid patch for ${c.path}: ${c.reason}`)
+}
