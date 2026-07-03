@@ -37,9 +37,9 @@ const submit = (summary: string) => reply({
 function routedClient(queues: Record<string, Array<ChatResult | Error>>) {
   const state = Object.fromEntries(Object.entries(queues).map(([k, v]) => [k, [...v]]))
   return {
-    chat: async ({ model: m }: { model: string }) => {
-      const q = state[m]
-      if (!q || q.length === 0) throw new Error(`no scripted reply for ${m}`)
+    chat: async (p: { model: string; messages?: Array<{ role: string; content: string | null }> }) => {
+      const q = state[p.model]
+      if (!q || q.length === 0) throw new Error(`no scripted reply for ${p.model}`)
       const next = q.shift()!
       if (next instanceof Error) throw next
       return next
@@ -129,6 +129,34 @@ describe('runArena', () => {
     })
     expect(out.revised).toBe(true)
     expect(out.winnerVerdictPass).toBe(false)
+  })
+
+  it('delivers each contestant its own briefing and none to judges', async () => {
+    const systems: Record<string, string> = {}
+    const base = routedClient({
+      'w/x': [submit('from x')],
+      'w/y': [submit('from y')],
+      'j/1': [verdictFor(['A', 'B'])],
+      'j/2': [verdictFor(['A', 'B'])],
+    })
+    const client = {
+      chat: async (p: { model: string; messages: Array<{ role: string; content: string | null }> }) => {
+        const sys = p.messages.find((m) => m.role === 'system')
+        if (sys?.content) systems[p.model] = (systems[p.model] ?? '') + sys.content
+        return base.chat(p)
+      },
+    }
+    await runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')],
+      judgePool: [model('j/1', ['review']), model('j/2', ['review'])],
+      scrubNames: [],
+      briefings: { 'w/x': '- x-specific coaching note' },
+    })
+    expect(systems['w/x']).toContain('x-specific coaching note')
+    expect(systems['w/y'] ?? '').not.toContain('x-specific coaching note')
+    expect(systems['j/1'] ?? '').not.toContain('coaching')
+    expect(systems['j/2'] ?? '').not.toContain('coaching')
   })
 
   it('throws ArenaAbortError when everyone forfeits', async () => {

@@ -259,6 +259,45 @@ describe('delegate', () => {
     expect(res.arena?.eloDeltas['w/coder2']).toBe(0)
   })
 
+  it('injects the worker model learnings as briefing in single mode', async () => {
+    // Model names here are longer than in the shared `catalog` fixture: buildBriefing
+    // scrubs every catalog id/name from the note, and single-letter names like 'W' or
+    // 'R' would strip individual letters out of ordinary English prose.
+    const scrubSafeCatalog: Registry = {
+      ...catalog,
+      models: catalog.models.map((m) => ({ ...m, name: `${m.name}-model` })),
+    }
+    saveState(statePath, {
+      version: 1,
+      judgeAgreement: { agree: 0, total: 0 },
+      models: {
+        'w/coder': {
+          ratings: { 'code-gen': { elo: 1200, matches: 9 }, review: { elo: 1200, matches: 9 } },
+          outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 0,
+          learnings: [{ ts: '1', note: 'always run the full suite', tags: ['code-gen'] }],
+        },
+        'w/coder2': { ratings: { 'code-gen': { elo: 1000, matches: 9 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 0, learnings: [] },
+        'w/coder3': { ratings: { 'code-gen': { elo: 990, matches: 9 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 0, learnings: [] },
+      },
+    })
+    const systems: string[] = []
+    const inner = scripted([submit('v1'), pass])
+    const client = {
+      calls: inner.calls,
+      chat: async (p: { model: string; messages: Array<{ role: string; content: string | null }> }) => {
+        const sys = p.messages.find((m) => m.role === 'system')
+        if (sys?.content) systems.push(sys.content)
+        return inner.chat(p)
+      },
+    }
+    const res = await delegate(
+      { config: cfg, catalog: scrubSafeCatalog, statePath, client, launchDir: workspace },
+      { task: 't', workspace, taskProfile: ['code-gen'] },
+    )
+    expect(res.mode).toBe('single')
+    expect(systems.some((s) => s.includes('always run the full suite'))).toBe(true)
+  })
+
   it('aborted tournament writes a trace and records strikes', async () => {
     plantState(statePath, { 'w/coder': { elo: 1000, matches: 0 }, 'w/coder2': { elo: 1000, matches: 0 }, 'w/coder3': { elo: 1000, matches: 0 } })
     const client = { chat: async () => { throw new NimError('degraded', 400) } }

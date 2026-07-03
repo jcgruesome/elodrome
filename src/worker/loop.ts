@@ -19,6 +19,7 @@ export interface WorkerLoopOptions {
   maxRequests?: number
   timeoutMs?: number
   now?: () => number
+  briefing?: string
 }
 
 const SYSTEM_PROMPT = `You are a coding subagent working in a read-only workspace.
@@ -38,8 +39,11 @@ export async function runWorkerLoop(opts: WorkerLoopOptions): Promise<{ result: 
   const now = opts.now ?? Date.now
   const started = now()
 
+  const system = opts.briefing
+    ? `${SYSTEM_PROMPT}\n\nNotes from your previous work in this repo (address these):\n${opts.briefing}`
+    : SYSTEM_PROMPT
   const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: system },
     { role: 'user', content: opts.task },
   ]
   const stats: WorkerStats = { requests: 0, promptTokens: 0, completionTokens: 0 }

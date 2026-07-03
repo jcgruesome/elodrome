@@ -1,7 +1,7 @@
 import type { Config } from '../config'
 import { ArenaAbortError, runArena, type RankingRow } from '../arena/arena'
 import { addAvailabilityStrike, applyTournament, type TournamentResult } from '../arena/elo'
-import { decide, selectJudges } from '../arena/select'
+import { buildBriefing, decide, selectJudges } from '../arena/select'
 import type { NimClient } from '../nim/client'
 import { invalidReasons, validateChanges, type ValidatedChange } from '../patch/validate'
 import type { CapabilityTag, ModelEntry, Registry } from '../registry/schema'
@@ -60,6 +60,8 @@ export interface DelegateResponse {
 
 const ZERO: WorkerStats = { requests: 0, promptTokens: 0, completionTokens: 0 }
 
+const scrubNamesOf = (catalog: Registry): string[] => catalog.models.flatMap((m) => [m.id, m.name])
+
 export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promise<DelegateResponse> {
   const root = validateWorkspace(req.workspace, deps.launchDir)
   const sandbox = new Sandbox(root)
@@ -69,22 +71,30 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
   if (req.model) {
     const worker = explicitWorker(deps.catalog, req.model)
     const reviewer = selectJudges(deps.catalog, state, [worker.id])[0]!
-    return singleDelegate(deps, req, sandbox, runId, worker, reviewer)
+    const briefing = buildBriefing(state, worker.id, req.taskProfile, scrubNamesOf(deps.catalog))
+    return singleDelegate(deps, req, sandbox, runId, worker, reviewer, briefing)
   }
 
   const decision = decide(deps.catalog, state, req.taskProfile)
   if (decision.mode === 'single') {
     const reviewer = selectJudges(deps.catalog, state, [decision.model.id])[0]!
-    return singleDelegate(deps, req, sandbox, runId, decision.model, reviewer)
+    const briefing = buildBriefing(state, decision.model.id, req.taskProfile, scrubNamesOf(deps.catalog))
+    return singleDelegate(deps, req, sandbox, runId, decision.model, reviewer, briefing)
   }
 
   const judges = selectJudges(deps.catalog, state, decision.contestants.map((c) => c.id))
-  const scrubNames = deps.catalog.models.flatMap((m) => [m.id, m.name])
+  const scrubNames = scrubNamesOf(deps.catalog)
+  const briefings = Object.fromEntries(
+    decision.contestants.flatMap((c) => {
+      const b = buildBriefing(state, c.id, req.taskProfile, scrubNames)
+      return b ? [[c.id, b]] : []
+    }),
+  )
   let outcome
   try {
     outcome = await runArena({
       client: deps.client, config: deps.config, sandbox, task: req.task, runId,
-      contestants: decision.contestants, judgePool: judges, scrubNames,
+      contestants: decision.contestants, judgePool: judges, scrubNames, briefings,
     })
   } catch (err) {
     if (err instanceof ArenaAbortError) {
@@ -175,11 +185,13 @@ async function singleDelegate(
   runId: string,
   worker: ModelEntry,
   reviewer: ModelEntry,
+  briefing?: string,
 ): Promise<DelegateResponse> {
   const attempt = async (task: string, prior: StatsBreakdown | undefined) => {
     const { result, stats } = await runWorkerLoop({
       client: deps.client, model: worker.id, task, sandbox,
       maxRequests: deps.config.maxWorkerRequests, timeoutMs: deps.config.workerTimeoutMs,
+      briefing,
     })
     const changes = validateChanges(sandbox, result.changes)
     const { critique, usage } = await runCritique(deps.client, reviewer.id, req.task, result)
