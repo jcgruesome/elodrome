@@ -3,6 +3,7 @@ import { Command } from 'commander'
 import { loadConfig, type Config } from '../config'
 import { NimClient } from '../nim/client'
 import { delegate } from '../pipeline/delegate'
+import { buildLeaderboard, renderLeaderboardMd } from '../registry/leaderboard'
 import { defaultRegistryPath, loadRegistry, winRate } from '../registry/registry'
 import { capabilityTagSchema, type CapabilityTag } from '../registry/schema'
 import { defaultStatePath, loadState } from '../registry/state'
@@ -58,6 +59,26 @@ export function buildCli(deps: CliDeps): Command {
         { suitePath: opts.suite, workspace: path.resolve(opts.workspace), modelId: opts.model },
       )
       print(JSON.stringify(result, null, 2))
+    })
+
+  program.command('leaderboard')
+    .description('Per-repo model leaderboard (Elo per capability tag)')
+    .option('--tag <tag>')
+    .option('--md', 'print shareable markdown')
+    .action((opts: { tag?: string; md?: boolean }) => {
+      const catalog = loadRegistry(deps.registryPath)
+      const state = loadState(deps.statePath, catalog)
+      const tag = opts.tag ? capabilityTagSchema.parse(opts.tag) : undefined
+      const sections = buildLeaderboard(catalog, state, tag)
+      if (opts.md) {
+        const title = `${path.basename(process.cwd())} — nv-agents leaderboard — ${new Date().toISOString().slice(0, 10)}`
+        print(renderLeaderboardMd(sections, title))
+        return
+      }
+      for (const s of sections) {
+        print(`[${s.tag}]`)
+        for (const r of s.rows) print(`  ${r.rank}  ${r.id.padEnd(45)} ${Math.round(r.elo)}  ${r.matches}${r.strikes ? `  strikes=${r.strikes}` : ''}`)
+      }
     })
 
   return program

@@ -80,4 +80,29 @@ describe('nva cli', () => {
     const parsed = JSON.parse(out.join('')) as { status: string }
     expect(parsed.status).toBe('ok')
   })
+
+  it('leaderboard prints ranked models', async () => {
+    const { workspace, registryPath, cfg, statePath } = setup()
+    const out: string[] = []
+    const cli = buildCli({
+      config: cfg, registryPath, statePath, launchDir: workspace,
+      client: { chat: async () => { throw new Error('unused') } },
+      print: (s) => out.push(s),
+    })
+    await cli.parseAsync(['node', 'nva', 'leaderboard', '--tag', 'code-gen'])
+    expect(out.join('\n')).toMatch(/1\s+w\/coder\s+1200\s+9/)
+  })
+
+  it('leaderboard --md prints markdown', async () => {
+    const { workspace, registryPath, cfg, statePath } = setup()
+    const out: string[] = []
+    const cli = buildCli({
+      config: cfg, registryPath, statePath, launchDir: workspace,
+      client: { chat: async () => { throw new Error('unused') } },
+      print: (s) => out.push(s),
+    })
+    await cli.parseAsync(['node', 'nva', 'leaderboard', '--md'])
+    expect(out.join('\n')).toContain('## code-gen')
+    expect(out.join('\n')).toContain('| 1 | w/coder | 1200 | 9 |')
+  })
 })

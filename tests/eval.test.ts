@@ -6,7 +6,7 @@ import { loadConfig } from '../src/config'
 import { runEvalSuite } from '../src/eval/harness'
 import type { ChatResult } from '../src/nim/client'
 import { loadRegistry } from '../src/registry/registry'
-import { loadState, saveState } from '../src/registry/state'
+import { loadState } from '../src/registry/state'
 
 const registryYaml = `
 version: 1
@@ -42,6 +42,7 @@ describe('runEvalSuite', () => {
     fs.writeFileSync(path.join(workspace, 'a.ts'), 'export const a = 1\n')
     const registryPath = path.join(workspace, 'models.yaml')
     fs.writeFileSync(registryPath, registryYaml)
+    const registryBefore = fs.readFileSync(registryPath, 'utf8')
     const suitePath = path.join(workspace, 'suite.yaml')
     fs.writeFileSync(suitePath, suiteYaml)
     const cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
@@ -75,5 +76,8 @@ describe('runEvalSuite', () => {
     expect(result.score).toBe(0.5)
     expect(result.failures).toEqual(['impossible'])
     expect(loadState(statePath, catalog).models['w/coder']?.evalScore).toBe(0.5)
+    // Verify registry YAML is never rewritten
+    const registryAfter = fs.readFileSync(registryPath, 'utf8')
+    expect(registryAfter).toBe(registryBefore)
   })
 })
