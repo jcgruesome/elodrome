@@ -57,7 +57,7 @@ function runOne(name: string, command: string, cwd: string, timeoutMs: number): 
     execFile(
       'sh',
       ['-c', command],
-      { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 },
+      { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, killSignal: 'SIGKILL' },
       (error, stdout, stderr) => {
         const output = truncate(`${stdout}${stderr}`)
         if (!error) {

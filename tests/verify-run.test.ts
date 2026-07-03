@@ -39,6 +39,18 @@ describe('runCommands', () => {
     expect(results[0]!.output).toMatch(/timed out/)
   }, 10_000)
 
+  it('kills a command that ignores SIGTERM via SIGKILL', async () => {
+    const start = Date.now()
+    const results = await runCommands(cwd, { stubborn: "trap '' TERM; sleep 5" }, 200)
+    const elapsed = Date.now() - start
+    expect(results).toHaveLength(1)
+    expect(results[0]!.exitCode).toBeNull()
+    expect(results[0]!.output).toMatch(/timed out/)
+    // Generous bound to avoid flakiness while still proving the process didn't
+    // run to completion (which would take ~5000ms).
+    expect(elapsed).toBeLessThan(3_000)
+  }, 10_000)
+
   it('truncates very long output', async () => {
     const results = await runCommands(cwd, { chatty: "node -e \"process.stdout.write('x'.repeat(10000))\"" }, 5_000)
     expect(results[0]!.output.length).toBeLessThan(5_000)
