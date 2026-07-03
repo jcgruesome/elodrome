@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderBoardHtml } from '../src/board/render'
-import type { BoardData } from '../src/board/data'
+import type { BoardData, Bout } from '../src/board/data'
 
 const data: BoardData = {
   generatedAt: '2026-07-03T05:00:00Z',
@@ -64,5 +64,30 @@ describe('renderBoardHtml', () => {
     expect(html).toContain('1 rejected')
     expect(html).toContain('50% (1/2 panels)')
     expect(html).toContain('1 corrupt trace line')
+  })
+})
+
+describe('renderBoardHtml — untrusted trace data', () => {
+  // mode and outcome are closed TS union types on Bout, but that guarantee is
+  // compile-time only: both values actually originate from JSON.parse() on
+  // trace JSONL files read from disk, so a corrupted/tampered trace line can
+  // put arbitrary text into either field. Simulate that by bypassing the type
+  // system the same way untrusted disk data would.
+  const maliciousBout = {
+    ...data.bouts[0],
+    mode: '<script>alert(1)</script>',
+    outcome: '<script>alert(1)</script>',
+  } as unknown as Bout
+  const maliciousData: BoardData = { ...data, bouts: [maliciousBout] }
+  const html = renderBoardHtml(maliciousData)
+
+  it('escapes an untrusted bout.mode instead of interpolating it raw', () => {
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+  })
+
+  it('escapes an untrusted bout.outcome in both the class name and visible text', () => {
+    expect(html).not.toContain('<span class="badge outcome-<script>alert(1)</script>">')
+    expect(html).toContain('outcome-&lt;script&gt;alert(1)&lt;/script&gt;')
   })
 })

@@ -34,14 +34,15 @@ function agreementBadge(b: Bout): string {
 
 function boutHtml(b: Bout): string {
   const dq = b.outcome === 'rejected'
+  const oc = b.outcome ? escapeHtml(b.outcome) : ''
   const outcomePill = b.outcome
-    ? `<span class="badge outcome-${b.outcome}">${b.outcome}</span>`
+    ? `<span class="badge outcome-${oc}">${oc}</span>`
     : '<span class="badge solo">unreported</span>'
   const learning = b.learning
     ? `<p class="learning-note">Learning: ${escapeHtml(b.learning)}</p>`
     : ''
   return `<div class="bout${dq ? ' inquiry' : ''}">
-  <div class="bout-head"><span>${b.mode} · <b>${escapeHtml(b.taskProfile.join(', '))}</b></span>`
+  <div class="bout-head"><span>${escapeHtml(b.mode)} · <b>${escapeHtml(b.taskProfile.join(', '))}</b></span>`
     + `<span>${escapeHtml(b.runId)}${dq ? " — <b>Stewards' inquiry</b>" : ''}</span></div>
   <div class="card">
     ${b.ranking.map((r, i) => rowHtml(r, i === 0 && !r.forfeit)).join('\n    ')}
