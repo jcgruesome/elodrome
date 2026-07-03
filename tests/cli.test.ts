@@ -37,6 +37,7 @@ function setup() {
         availabilityStrikes: 0,
       },
     },
+    judgeAgreement: { agree: 0, total: 0 },
   })
   return { workspace, registryPath, statePath, cfg }
 }

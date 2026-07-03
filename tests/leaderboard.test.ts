@@ -17,6 +17,7 @@ const state: NvState = {
     'a/x': { ratings: { 'code-gen': { elo: 1040.4, matches: 3 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 1 },
     'b/y': { ratings: { 'code-gen': { elo: 980, matches: 3 }, review: { elo: 1010, matches: 2 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 0 },
   },
+  judgeAgreement: { agree: 0, total: 0 },
 }
 
 describe('leaderboard', () => {
@@ -39,5 +40,19 @@ describe('leaderboard', () => {
     expect(md).toContain('# my-repo leaderboard')
     expect(md).toContain('## code-gen')
     expect(md).toContain('| 1 | a/x | 1040 | 3 |')
+  })
+
+  it('renders the judge agreement line when panels have run', () => {
+    const md = renderLeaderboardMd(
+      buildLeaderboard(catalog, state, 'code-gen'),
+      'my-repo leaderboard',
+      { agree: 3, total: 4 },
+    )
+    expect(md).toContain('Judge agreement: 75% (3/4 panels)')
+  })
+
+  it('omits the judge agreement line when no panels have run', () => {
+    const md = renderLeaderboardMd(buildLeaderboard(catalog, state, 'code-gen'), 'my-repo leaderboard', { agree: 0, total: 0 })
+    expect(md).not.toContain('Judge agreement:')
   })
 })

@@ -4,7 +4,7 @@ import {
 } from '../src/arena/elo'
 import { getRating, type NvState } from '../src/registry/state'
 
-const empty: NvState = { version: 1, models: {} }
+const empty: NvState = { version: 1, models: {}, judgeAgreement: { agree: 0, total: 0 } }
 
 describe('elo math', () => {
   it('expected score is 0.5 for equals and sums to 1', () => {

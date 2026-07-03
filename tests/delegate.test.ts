@@ -30,6 +30,7 @@ function plantState(path_: string, ratings: Record<string, { elo: number; matche
       outcomes: { accepted: 0, reworked: 0, rejected: 0 },
       availabilityStrikes: 0,
     }])),
+    judgeAgreement: { agree: 0, total: 0 },
   })
 }
 
@@ -204,6 +205,31 @@ describe('delegate', () => {
     const contestants = res.statsBreakdown.contestants!
     expect(Object.keys(contestants)).toHaveLength(3)
     for (const s of Object.values(contestants)) expect(s.requests).toBeGreaterThanOrEqual(1)
+  })
+
+  it('records judge agreement in state for a tournament with 2 judges', async () => {
+    const twoJudgeCatalog: Registry = {
+      version: 1,
+      models: [
+        { id: 'w/coder', name: 'W', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'w/coder2', name: 'W2', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'r/rev', name: 'R', tags: ['review'], contextWindow: 1, toolCalling: 'none', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'r/rev2', name: 'R2', tags: ['review'], contextWindow: 1, toolCalling: 'none', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    plantState(statePath, { 'w/coder': { elo: 1000, matches: 0 }, 'w/coder2': { elo: 1000, matches: 0 } })
+    const client = routedByModel({
+      'w/coder': [submit('c1')], 'w/coder2': [submit('c2')],
+      'r/rev': [verdictOfLabels], 'r/rev2': [verdictOfLabels],
+    })
+    const res = await delegate(
+      { config: cfg, catalog: twoJudgeCatalog, statePath, client, launchDir: workspace },
+      { task: 't', workspace, taskProfile: ['code-gen'] },
+    )
+    expect(res.mode).toBe('tournament')
+    expect(res.arena?.judges).toHaveLength(2)
+    const state = loadState(statePath, twoJudgeCatalog)
+    expect(state.judgeAgreement.total).toBe(1)
   })
 
   it('single mode when champion dominates', async () => {

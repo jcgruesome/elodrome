@@ -72,7 +72,7 @@ export function buildCli(deps: CliDeps): Command {
       const sections = buildLeaderboard(catalog, state, tag)
       if (opts.md) {
         const title = `${path.basename(process.cwd())} — nv-agents leaderboard — ${new Date().toISOString().slice(0, 10)}`
-        print(renderLeaderboardMd(sections, title))
+        print(renderLeaderboardMd(sections, title, state.judgeAgreement))
         return
       }
       for (const s of sections) {

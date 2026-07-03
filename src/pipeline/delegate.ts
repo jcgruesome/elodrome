@@ -115,6 +115,15 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     for (const row of outcome.ranking) {
       if (row.forfeit === 'no_contest') next = addAvailabilityStrike(next, row.model)
     }
+    if (outcome.agreement !== null) {
+      next = {
+        ...next,
+        judgeAgreement: {
+          agree: next.judgeAgreement.agree + (outcome.agreement ? 1 : 0),
+          total: next.judgeAgreement.total + 1,
+        },
+      }
+    }
     const deltas = Object.fromEntries(
       results.map((r) => [r.model, getRating(next, r.model, primary).elo - before[r.model]!]),
     )

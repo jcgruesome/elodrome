@@ -22,6 +22,7 @@ function stateWith(ratings: Record<string, { elo: number; matches: number }>): N
       outcomes: { accepted: 0, reworked: 0, rejected: 0 },
       availabilityStrikes: 0,
     }])),
+    judgeAgreement: { agree: 0, total: 0 },
   }
 }
 

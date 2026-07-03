@@ -21,9 +21,16 @@ export const modelStateSchema = z.object({
 })
 export type ModelState = z.infer<typeof modelStateSchema>
 
+export const judgeAgreementSchema = z.object({
+  agree: z.number().int().min(0),
+  total: z.number().int().min(0),
+})
+export type JudgeAgreement = z.infer<typeof judgeAgreementSchema>
+
 export const stateSchema = z.object({
   version: z.literal(1),
   models: z.record(z.string(), modelStateSchema),
+  judgeAgreement: judgeAgreementSchema.default({ agree: 0, total: 0 }),
 })
 export type NvState = z.infer<typeof stateSchema>
 
@@ -60,7 +67,7 @@ export function seedFromCatalog(state: NvState, catalog: Registry): NvState {
 export function loadState(statePath: string, catalog: Registry): NvState {
   const base: NvState = fs.existsSync(statePath)
     ? stateSchema.parse(JSON.parse(fs.readFileSync(statePath, 'utf8')))
-    : { version: 1, models: {} }
+    : { version: 1, models: {}, judgeAgreement: { agree: 0, total: 0 } }
   return seedFromCatalog(base, catalog)
 }
 

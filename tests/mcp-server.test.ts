@@ -47,6 +47,7 @@ beforeEach(() => {
         availabilityStrikes: 0,
       },
     },
+    judgeAgreement: { agree: 0, total: 0 },
   })
 })
 

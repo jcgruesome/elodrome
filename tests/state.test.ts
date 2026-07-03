@@ -60,6 +60,18 @@ describe('state store', () => {
     expect(getRating(reloaded, 'b/veteran', 'review').elo).toBe(1004)
   })
 
+  it('parses judgeAgreement and defaults it when absent', () => {
+    const p = tmpState()
+    saveState(p, { version: 1, models: {}, judgeAgreement: { agree: 3, total: 5 } })
+    const withValue = loadState(p, catalog)
+    expect(withValue.judgeAgreement).toEqual({ agree: 3, total: 5 })
+
+    const p2 = tmpState()
+    fs.writeFileSync(p2, JSON.stringify({ version: 1, models: {} }))
+    const withDefault = loadState(p2, catalog)
+    expect(withDefault.judgeAgreement).toEqual({ agree: 0, total: 0 })
+  })
+
   it('throws on malformed state files', () => {
     const p = tmpState()
     fs.writeFileSync(p, '{"version":9}')

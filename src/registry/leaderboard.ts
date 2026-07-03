@@ -40,8 +40,13 @@ export function buildLeaderboard(
 export function renderLeaderboardMd(
   sections: Array<{ tag: string; rows: LeaderboardRow[] }>,
   title: string,
+  judgeAgreement?: { agree: number; total: number },
 ): string {
   const parts = [`# ${title}`, '']
+  if (judgeAgreement && judgeAgreement.total > 0) {
+    const pct = Math.round((judgeAgreement.agree / judgeAgreement.total) * 100)
+    parts.push(`Judge agreement: ${pct}% (${judgeAgreement.agree}/${judgeAgreement.total} panels)`, '')
+  }
   for (const s of sections) {
     parts.push(`## ${s.tag}`, '', '| # | model | Elo | matches |', '|---|---|---|---|')
     for (const r of s.rows) parts.push(`| ${r.rank} | ${r.id} | ${Math.round(r.elo)} | ${r.matches} |`)
