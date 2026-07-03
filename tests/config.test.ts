@@ -30,4 +30,10 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_RPM: 'abc' })).toThrow(/ELODROME_RPM/)
     expect(() => loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_WORKER_TIMEOUT_MS: '-5' })).toThrow(/ELODROME_WORKER_TIMEOUT_MS/)
   })
+
+  it('defaults and validates verifyTimeoutMs', () => {
+    const cfg = loadConfig({ NVIDIA_API_KEY: 'k' })
+    expect(cfg.verifyTimeoutMs).toBe(180_000)
+    expect(() => loadConfig({ NVIDIA_API_KEY: 'k', ELODROME_VERIFY_TIMEOUT_MS: 'abc' })).toThrow(/ELODROME_VERIFY_TIMEOUT_MS/)
+  })
 })
