@@ -143,6 +143,24 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     return { state: next, result: deltas }
   })
 
+  const verifyRevisedModels = Object.entries(outcome.verifyRevisionUsed)
+    .filter(([, used]) => used)
+    .map(([m]) => m)
+  if (verifyRevisedModels.length > 0) {
+    await withStateLock(deps.statePath, deps.catalog, (s) => {
+      const next = verifyRevisedModels.reduce((acc, m) => {
+        const checkNames = outcome.verify[m]?.checks.filter((c) => c.exitCode !== 0).map((c) => c.name) ?? []
+        return addLearning(acc, m, {
+          ts: new Date().toISOString(),
+          note: `Needed a verify-revision (${checkNames.join(', ')}) before passing.`,
+          tags: req.taskProfile,
+          runId,
+        })
+      }, s)
+      return { state: next, result: null }
+    })
+  }
+
   const winnerValid = outcome.winner.changes.every((c) => c.valid)
   const status = winnerValid && (outcome.winnerVerdictPass || outcome.revised) ? 'ok' as const : 'failed_review' as const
   const workerStats = Object.values(outcome.usage.contestants).reduce(addStats, ZERO)

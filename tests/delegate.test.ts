@@ -404,4 +404,60 @@ describe('delegate', () => {
     expect(JSON.parse(lines[0]!)).toMatchObject({ kind: 'tournament', status: 'aborted' })
     expect(loadState(statePath, catalog).models['w/coder']?.availabilityStrikes).toBe(1)
   })
+
+  it('tournament mode: records a learning note for a contestant that needed a verify-revision', async () => {
+    // Only two code-gen-eligible workers in this catalog (unlike the shared `catalog` fixture,
+    // which also has w/coder3 and would force a 3-contestant tournament requiring a third
+    // scripted worker queue). Near-tied elo keeps this on the tournament path, not single.
+    const twoWorkerCatalog: Registry = {
+      version: 1,
+      models: [
+        { id: 'w/coder', name: 'W', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'w/coder2', name: 'W2', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'r/rev', name: 'R', tags: ['review'], contextWindow: 1, toolCalling: 'none', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    const gitWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dlg-tverify-'))
+    execFileSync('git', ['init', '-q'], { cwd: gitWorkspace })
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: gitWorkspace })
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: gitWorkspace })
+    fs.writeFileSync(path.join(gitWorkspace, 'a.ts'), 'export const a = 1\n')
+    // Fails until a "fixed.txt" file shows up in a contestant's changes, forcing exactly
+    // one verify-revision round-trip per contestant (mirrors the single-mode fixture above).
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"check": "test -f fixed.txt"}')
+    execFileSync('git', ['add', '.'], { cwd: gitWorkspace })
+    execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: gitWorkspace })
+
+    plantState(statePath, {
+      'w/coder': { elo: 1000, matches: 9 },
+      'w/coder2': { elo: 995, matches: 9 },
+    })
+
+    const submitFix = (label: string) => reply({
+      toolCalls: [{
+        id: 's', name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: label, rationale: 'r',
+          changes: [{ path: 'fixed.txt', type: 'full', content: 'x' }],
+        }),
+      }],
+    })
+
+    const client = routedByModel({
+      'w/coder': [submit('a1'), submitFix('a2')],
+      'w/coder2': [submit('b1'), submitFix('b2')],
+      'r/rev': [verdictOfLabels],
+    })
+
+    await delegate(
+      { config: cfg, catalog: twoWorkerCatalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'] },
+    )
+
+    const state = loadState(statePath, twoWorkerCatalog)
+    const learnings = state.models['w/coder']?.learnings ?? []
+    const coder2Learnings = state.models['w/coder2']?.learnings ?? []
+    const allNotes = [...learnings, ...coder2Learnings].map((l) => l.note)
+    expect(allNotes.some((n) => n.includes('verify-revision'))).toBe(true)
+  })
 })
