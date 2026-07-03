@@ -26,24 +26,41 @@ artifact URL after every delegation.
 1. **State schema: learnings** (`src/registry/state.ts`)
    `ModelState` gains `learnings: Array<{ ts: string; note: string; tags: string[]; outcome: 'accepted'|'reworked'|'rejected'; runId: string }>`
    (zod, default `[]`). Capped at the **10 most recent per model** — appending
-   the 11th drops the oldest (FIFO). Written only under `withStateLock`.
-   `addLearning(state, modelId, entry): NvState` (pure, immutable) lives in
-   `src/arena/elo.ts` alongside the other state applicators.
+   the 11th drops the oldest (FIFO). **Dedupe:** appending a note byte-identical
+   to an existing one refreshes that entry's `ts` (moves it to newest) instead of
+   duplicating. Written only under `withStateLock`.
+   `addLearning(state, modelId, entry): NvState` and
+   `forgetLearnings(state, modelId, substring): NvState` (pure, immutable) live
+   in `src/arena/elo.ts` alongside the other state applicators.
 
-2. **Capture: `report_outcome`** (`src/mcp/server.ts`)
-   Input schema gains `learning: z.string().min(8).max(300).optional()`.
-   When present it is applied (with the outcome nudge, same lock) to the run's
-   worker model with the run's profile tags, and included in the outcome trace
-   record. The tool description states the policy: REQUIRED for
-   reworked/rejected — name the concrete behavioral cause and the prescription.
+2. **Capture: `report_outcome` + `record_learning`** (`src/mcp/server.ts`)
+   - `report_outcome` input schema gains `learning: z.string().min(8).max(300).optional()`.
+     When present it is applied (with the outcome nudge, same lock) to the run's
+     worker model with the run's profile tags, and included in the outcome trace
+     record. The tool description states the policy: REQUIRED for
+     reworked/rejected — name the observed behavioral cause and the prescription;
+     never style praise; check the model's existing notes first and refine
+     rather than restate.
+   - **Idempotency:** a second `report_outcome` for the same `run_id` is
+     rejected with a clear error (checked against the in-memory map and the
+     trace file's existing `kind:'outcome'` records).
+   - **New tool `record_learning`**: `{ model: string, note?: z.string().min(8).max(300),
+     tags?: CapabilityTag[], forget?: z.string().min(4) }`. `note` appends a
+     learning to ANY catalog model (losers, forfeiters, judges — e.g. a model
+     that keeps replying in prose as a worker); `forget` removes all of that
+     model's learnings whose note contains the substring (the correction path
+     for a wrong note). At least one of `note`/`forget` required. Both under
+     the state lock; both traced (`kind:'learning'`).
 
 3. **Feedback: coach's notes briefing**
    - `runWorkerLoop` (`src/worker/loop.ts`) gains `briefing?: string`; when
      present it is appended to the system prompt under the heading
      `Notes from your previous work in this repo (address these):`.
-   - `buildBriefing(state, modelId): string | undefined`
-     (`src/arena/select.ts`) returns the model's latest **3** learning notes as
-     a bulleted string, or undefined when none. Notes are phrased second-person
+   - `buildBriefing(state, modelId, profile): string | undefined`
+     (`src/arena/select.ts`) returns the model's latest **3** eligible learning
+     notes as a bulleted string, or undefined when none. **Tag-aware:** eligible
+     = notes whose `tags` intersect the run's profile, plus untagged notes;
+     newest first. (A shell-scripting run doesn't get coached on Big-O notes.) Notes are phrased second-person
      by the author (policy); `buildBriefing` additionally strips any catalog
      model id/name occurrences (reuse `scrubModelNames`) so briefings can never
      leak identity — **judges never see briefings**, and a worker echoing its
@@ -94,14 +111,20 @@ learnings into briefings.
 - Board build: unreadable runsDir → empty bouts + zeroed counters (a fresh
   install has a board, not a crash); **corrupt lines skipped and counted
   visibly**; malformed state still throws (state is load-bearing, traces are
-  reporting).
+  reporting). The board footer states the provenance split: Elo ladders come
+  from state (authoritative); bouts/counters come from traces (reporting) —
+  they can legitimately disagree when a trace line is corrupt. `--days`
+  filters bouts only; counters are always all-time and labeled so.
+- Duplicate `report_outcome` for a run_id → error (idempotency guard).
 - Board render is pure; CLI write failures propagate (fail fast).
 
 ## Testing
 
 - State: learnings schema round-trip; `addLearning` cap/FIFO + immutability.
 - Server: `report_outcome` with learning persists note + nudge under one lock,
-  trace includes it; length validation rejects.
+  trace includes it; length validation rejects; second report for the same
+  run_id rejects. `record_learning`: note to arbitrary model, forget removes
+  matching notes, note+forget both absent rejects, dedupe refreshes ts.
 - Briefing: `buildBriefing` picks latest 3, scrubs names, undefined when empty;
   worker-loop test asserts briefing text lands in the system prompt; delegate
   test asserts contestants receive their own (and only their own) briefings.
@@ -110,6 +133,15 @@ learnings into briefings.
   assertions (tokens present, bout rows, DQ styling class, both theme blocks);
   CLI `board` command writes file and prints path.
 - Existing 121 tests stay green.
+
+## Deliberate stances (documented, not gaps)
+
+- **Evals measure the coached system.** `runEvalSuite` delegations include
+  briefings by design — the eval reflects the system as deployed, not a
+  briefing-free lab condition.
+- **Judge statelessness bounds fingerprinting.** Briefing-induced style can't
+  de-anonymize entries across tournaments because judges hold no cross-call
+  memory; within one tournament each judge sees each entry once.
 
 ## Out of scope (v1)
 
@@ -122,7 +154,9 @@ learnings into briefings.
 
 | Risk | Mitigation |
 |---|---|
-| Learning prompt bloat | 10-cap in state, 3 injected, 300-char limit |
+| Learning prompt bloat | 10-cap in state, 3 injected, 300-char limit (~900 chars worst case vs 128k contexts) |
+| Echo-chamber / praise dogma | Policy: learnings are failure-cause + prescription only; visible in list_models + board scouting report for audit; `forget` is the correction path |
+| Wrong learning persists | `record_learning.forget` removes it; 3-note injection ages notes out naturally |
 | Briefing leaks identity to judges | Briefings only in worker prompts; scrubbed of catalog names; entry scrubber remains the backstop |
 | Poisoned learnings steering workers wrong | Sole author is Claude at verdict time — the same reviewer whose judgment gates every change |
 | Board drift from DS updates | Token values carry a provenance comment + date; refresh is a one-file re-export |
