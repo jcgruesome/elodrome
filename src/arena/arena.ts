@@ -43,6 +43,7 @@ export interface ArenaOptions {
   contestants: ModelEntry[]
   judgePool: ModelEntry[]
   scrubNames: string[]
+  briefings?: Record<string, string>
 }
 
 const ZERO: WorkerStats = { requests: 0, promptTokens: 0, completionTokens: 0 }
@@ -55,6 +56,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     sandbox: opts.sandbox,
     maxRequests: opts.config.maxWorkerRequests,
     timeoutMs: opts.config.workerTimeoutMs,
+    briefing: opts.briefings?.[m.id],
   })))
 
   const entries: ArenaEntry[] = []
@@ -157,6 +159,7 @@ async function revise(opts: ArenaOptions, entry: ArenaEntry, issues: string[]): 
     sandbox: opts.sandbox,
     maxRequests: opts.config.maxWorkerRequests,
     timeoutMs: opts.config.workerTimeoutMs,
+    briefing: opts.briefings?.[entry.model],
   })
   return {
     model: entry.model,

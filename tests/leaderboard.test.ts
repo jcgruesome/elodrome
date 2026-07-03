@@ -14,8 +14,8 @@ const catalog: Registry = {
 const state: NvState = {
   version: 1,
   models: {
-    'a/x': { ratings: { 'code-gen': { elo: 1040.4, matches: 3 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 1 },
-    'b/y': { ratings: { 'code-gen': { elo: 980, matches: 3 }, review: { elo: 1010, matches: 2 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 0 },
+    'a/x': { ratings: { 'code-gen': { elo: 1040.4, matches: 3 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 1, learnings: [] },
+    'b/y': { ratings: { 'code-gen': { elo: 980, matches: 3 }, review: { elo: 1010, matches: 2 } }, outcomes: { accepted: 0, reworked: 0, rejected: 0 }, availabilityStrikes: 0, learnings: [] },
   },
   judgeAgreement: { agree: 0, total: 0 },
 }

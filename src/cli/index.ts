@@ -1,5 +1,9 @@
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Command } from 'commander'
+import { buildBoardData } from '../board/data'
+import { renderBoardHtml } from '../board/render'
 import { loadConfig, type Config } from '../config'
 import { NimClient } from '../nim/client'
 import { delegate } from '../pipeline/delegate'
@@ -79,6 +83,24 @@ export function buildCli(deps: CliDeps): Command {
         print(`[${s.tag}]`)
         for (const r of s.rows) print(`  ${r.rank}  ${r.id.padEnd(45)} ${Math.round(r.elo)}  ${r.matches}${r.strikes ? `  strikes=${r.strikes}` : ''}`)
       }
+    })
+
+  program.command('board')
+    .description('Write the Arena match board (ReshapeX-styled HTML) from traces + state')
+    .option('--out <path>', 'output file', path.join(os.homedir(), '.nv-agents', 'board.html'))
+    .option('--days <n>', 'only include bouts from the last N days')
+    .action((opts: { out: string; days?: string }) => {
+      const catalog = loadRegistry(deps.registryPath)
+      const state = loadState(deps.statePath, catalog)
+      const days = opts.days === undefined ? undefined : Number(opts.days)
+      if (days !== undefined && (!Number.isFinite(days) || days < 0)) {
+        throw new Error(`--days must be a non-negative number, got "${opts.days}"`)
+      }
+      const data = buildBoardData(deps.config.runsDir, catalog, state, { days })
+      const outPath = path.resolve(opts.out)
+      fs.mkdirSync(path.dirname(outPath), { recursive: true })
+      fs.writeFileSync(outPath, renderBoardHtml(data))
+      print(outPath)
     })
 
   return program

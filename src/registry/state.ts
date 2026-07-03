@@ -13,11 +13,23 @@ export const tagRatingSchema = z.object({
 })
 export type TagRating = z.infer<typeof tagRatingSchema>
 
+export const LEARNING_CAP = 10
+
+export const learningSchema = z.object({
+  ts: z.string(),
+  note: z.string().min(8).max(300),
+  tags: z.array(z.string()).default([]),
+  outcome: z.enum(['accepted', 'reworked', 'rejected']).optional(),
+  runId: z.string().optional(),
+})
+export type Learning = z.infer<typeof learningSchema>
+
 export const modelStateSchema = z.object({
   ratings: z.record(z.string(), tagRatingSchema).default({}),
   outcomes: outcomesSchema.default({ accepted: 0, reworked: 0, rejected: 0 }),
   evalScore: z.number().min(0).max(1).optional(),
   availabilityStrikes: z.number().int().min(0).default(0),
+  learnings: z.array(learningSchema).default([]),
 })
 export type ModelState = z.infer<typeof modelStateSchema>
 
@@ -53,6 +65,7 @@ function seedEntry(entry: ModelEntry): ModelState {
     outcomes: { ...entry.outcomes },
     ...(entry.evalScore !== undefined ? { evalScore: entry.evalScore } : {}),
     availabilityStrikes: 0,
+    learnings: [],
   }
 }
 

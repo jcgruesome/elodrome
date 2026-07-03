@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addAvailabilityStrike, applyOutcome, applyTournament, expectedScore, tournamentDeltas,
+  addAvailabilityStrike, addLearning, applyOutcome, applyTournament, expectedScore,
+  forgetLearnings, tournamentDeltas,
 } from '../src/arena/elo'
-import { getRating, type NvState } from '../src/registry/state'
+import { getRating, LEARNING_CAP, type Learning, type NvState } from '../src/registry/state'
 
 const empty: NvState = { version: 1, models: {}, judgeAgreement: { agree: 0, total: 0 } }
+
+const note = (n: string, ts = '2026-07-03T00:00:00Z'): Learning => ({
+  ts, note: n, tags: ['code-gen'], outcome: 'reworked', runId: 'run_x_00000000',
+})
 
 describe('elo math', () => {
   it('expected score is 0.5 for equals and sums to 1', () => {
@@ -60,5 +65,35 @@ describe('elo math', () => {
   it('addAvailabilityStrike increments', () => {
     const next = addAvailabilityStrike(addAvailabilityStrike(empty, 'x'), 'x')
     expect(next.models.x?.availabilityStrikes).toBe(2)
+  })
+})
+
+describe('learnings', () => {
+  it('appends and caps FIFO at LEARNING_CAP', () => {
+    let s = empty
+    for (let i = 0; i < LEARNING_CAP + 3; i++) s = addLearning(s, 'm', note(`note number ${i}`))
+    const notes = s.models.m!.learnings.map((l) => l.note)
+    expect(notes).toHaveLength(LEARNING_CAP)
+    expect(notes[0]).toBe('note number 3') // oldest three dropped
+    expect(notes.at(-1)).toBe(`note number ${LEARNING_CAP + 2}`)
+    expect(empty.models.m).toBeUndefined() // immutability
+  })
+
+  it('dedupes byte-identical notes by refreshing to newest', () => {
+    let s = addLearning(empty, 'm', note('same note text', '2026-01-01T00:00:00Z'))
+    s = addLearning(s, 'm', note('another note here'))
+    s = addLearning(s, 'm', note('same note text', '2026-07-03T09:00:00Z'))
+    const ls = s.models.m!.learnings
+    expect(ls).toHaveLength(2)
+    expect(ls.at(-1)!.note).toBe('same note text')
+    expect(ls.at(-1)!.ts).toBe('2026-07-03T09:00:00Z')
+  })
+
+  it('forgets by substring and ignores unknown models', () => {
+    let s = addLearning(empty, 'm', note('fabricates citations under pressure'))
+    s = addLearning(s, 'm', note('slow on long files'))
+    s = forgetLearnings(s, 'm', 'fabricates')
+    expect(s.models.m!.learnings.map((l) => l.note)).toEqual(['slow on long files'])
+    expect(forgetLearnings(s, 'nope/nope', 'x')).toEqual(s)
   })
 })

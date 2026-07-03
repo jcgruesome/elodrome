@@ -83,4 +83,35 @@ describe('runWorkerLoop', () => {
     await expect(runWorkerLoop({ client, model: 'm', task: 't', sandbox: sbx, now: () => t }))
       .rejects.toThrow(/timed out/i)
   })
+
+  it('appends the briefing to the system prompt', async () => {
+    const seen: Array<{ role: string; content: string | null }> = []
+    const inner = scriptedClient([
+      reply({ toolCalls: [{ id: '1', name: 'submit_result', arguments: submitArgs }] }),
+    ])
+    const client = {
+      chat: async (p: { model: string; messages: Array<{ role: string; content: string | null }> }) => {
+        seen.push(...p.messages.filter((m) => m.role === 'system'))
+        return inner.chat()
+      },
+    }
+    await runWorkerLoop({ client, model: 'm', task: 't', sandbox: sbx, briefing: '- do not fabricate citations' })
+    expect(seen[0]!.content).toContain('Notes from your previous work in this repo (address these):')
+    expect(seen[0]!.content).toContain('- do not fabricate citations')
+  })
+
+  it('omits the briefing section when absent', async () => {
+    const seen: Array<{ role: string; content: string | null }> = []
+    const inner = scriptedClient([
+      reply({ toolCalls: [{ id: '1', name: 'submit_result', arguments: submitArgs }] }),
+    ])
+    const client = {
+      chat: async (p: { model: string; messages: Array<{ role: string; content: string | null }> }) => {
+        seen.push(...p.messages.filter((m) => m.role === 'system'))
+        return inner.chat()
+      },
+    }
+    await runWorkerLoop({ client, model: 'm', task: 't', sandbox: sbx })
+    expect(seen[0]!.content).not.toContain('Notes from your previous work')
+  })
 })

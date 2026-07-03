@@ -15,12 +15,24 @@ export function appendTrace(runsDir: string, record: Record<string, unknown>): v
 
 export interface RunRef { model: string; tags: string[] }
 
+// One truncated/corrupt line anywhere in the runs directory (e.g. a crash mid-append)
+// must not stop the scan for a real match in the rest of the file — skip it and
+// keep going, matching the skip-and-continue pattern src/board/data.ts already uses.
+function tryParseLine(line: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(line) as Record<string, unknown>
+  } catch {
+    return undefined
+  }
+}
+
 export function findRun(runsDir: string, runId: string): RunRef | undefined {
   if (!fs.existsSync(runsDir)) return undefined
   for (const file of fs.readdirSync(runsDir).filter((f) => f.endsWith('.jsonl'))) {
     for (const line of fs.readFileSync(path.join(runsDir, file), 'utf8').split('\n')) {
       if (!line.trim()) continue
-      const rec = JSON.parse(line) as Record<string, unknown>
+      const rec = tryParseLine(line)
+      if (!rec) continue
       if (
         rec.runId === runId
         && (rec.kind === 'delegate' || rec.kind === 'tournament')
@@ -35,4 +47,17 @@ export function findRun(runsDir: string, runId: string): RunRef | undefined {
 
 export function findRunModel(runsDir: string, runId: string): string | undefined {
   return findRun(runsDir, runId)?.model
+}
+
+export function hasOutcome(runsDir: string, runId: string): boolean {
+  if (!fs.existsSync(runsDir)) return false
+  for (const file of fs.readdirSync(runsDir).filter((f) => f.endsWith('.jsonl'))) {
+    for (const line of fs.readFileSync(path.join(runsDir, file), 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      const rec = tryParseLine(line)
+      if (!rec) continue
+      if (rec.kind === 'outcome' && rec.runId === runId) return true
+    }
+  }
+  return false
 }

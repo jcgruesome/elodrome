@@ -163,6 +163,23 @@ describe('state store', () => {
     expect(leftovers).toEqual([])
   }, 30_000)
 
+  it('round-trips learnings through save/load', () => {
+    const p = tmpState()
+    const s0 = loadState(p, catalog)
+    const withNote = {
+      ...s0,
+      models: {
+        ...s0.models,
+        'a/fresh': {
+          ...s0.models['a/fresh']!,
+          learnings: [{ ts: '2026-07-03T00:00:00Z', note: 'a good learning note', tags: ['code-gen'] }],
+        },
+      },
+    }
+    saveState(p, withNote)
+    expect(loadState(p, catalog).models['a/fresh']?.learnings[0]?.note).toBe('a good learning note')
+  })
+
   it('cross-process contention reclaims a pre-existing stale lock without losing updates', async () => {
     const p = tmpState()
     const lockDir = `${p}.lock`

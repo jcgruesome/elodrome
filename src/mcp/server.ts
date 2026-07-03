@@ -10,10 +10,14 @@ import {
   defaultRegistryPath, loadRegistry, winRate,
 } from '../registry/registry'
 import { capabilityTagSchema, type CapabilityTag } from '../registry/schema'
-import { applyOutcome } from '../arena/elo'
+import {
+  addLearning, applyOutcome, forgetLearnings, type Outcome,
+} from '../arena/elo'
 import { buildLeaderboard } from '../registry/leaderboard'
-import { defaultStatePath, loadState, withStateLock } from '../registry/state'
-import { appendTrace, findRun } from '../trace/trace'
+import {
+  defaultStatePath, learningSchema, loadState, withStateLock,
+} from '../registry/state'
+import { appendTrace, findRun, hasOutcome } from '../trace/trace'
 
 const MAX_INLINE_CHARS = 20_000
 
@@ -51,9 +55,26 @@ function err(e: unknown) {
   return { isError: true, content: [{ type: 'text' as const, text: (e as Error).message }] }
 }
 
+// Learning notes are rendered one-bullet-per-line in buildBriefing; strip embedded
+// newlines so a note can never inject an extra bullet or break that formatting.
+// Callers pass args already validated against the min(8)/max(300) zod bounds, but
+// collapsing newlines can shrink the string further — e.g. "abc\n\ncde" is 8 chars
+// (passes the input check) but normalizes to "abc cde" (7 chars). Re-validate the
+// *normalized* result against the same bounds (learningSchema's own note field, so
+// this can never drift out of sync with it) and fail loudly rather than let
+// addLearning/saveState persist a note that the next loadState() can't parse.
+function normalizeNote(note: string): string {
+  const normalized = note.replace(/\s*\n+\s*/g, ' ').trim()
+  if (!learningSchema.shape.note.safeParse(normalized).success) {
+    throw new Error('learning note became too short after removing newlines — provide more detail')
+  }
+  return normalized
+}
+
 export function buildServer(deps: ServerDeps): McpServer {
   const server = new McpServer({ name: 'nv-agents', version: '0.1.0' })
   const runWorkers = new Map<string, { model: string; tags: string[] }>()
+  const reported = new Set<string>()
 
   server.registerTool('list_models', {
     description: 'List NVIDIA NIM models available for delegation, with capability tags, '
@@ -72,6 +93,7 @@ export function buildServer(deps: ServerDeps): McpServer {
           winRate: winRate(ms?.outcomes ?? { accepted: 0, reworked: 0, rejected: 0 }),
           ratings: ms?.ratings ?? {},
           availabilityStrikes: ms?.availabilityStrikes ?? 0,
+          learnings: (ms?.learnings ?? []).slice(-3).reverse().map((l) => ({ note: l.note, ts: l.ts })),
         }
       })
       return ok(JSON.stringify({ models }))
@@ -134,23 +156,89 @@ export function buildServer(deps: ServerDeps): McpServer {
   server.registerTool('report_outcome', {
     description: 'REQUIRED after every delegate call, once you have reviewed the result: '
       + 'record whether you accepted the output as-is, reworked it, or rejected it. '
-      + 'This feeds model win rates used for future routing.',
+      + 'This feeds model win rates used for future routing. '
+      + 'For reworked/rejected, ALWAYS pass `learning`: the observed behavioral cause + '
+      + 'prescription (never style praise); check the model\'s existing notes in list_models '
+      + 'first and refine rather than restate.',
     inputSchema: {
       run_id: z.string(),
       outcome: z.enum(['accepted', 'reworked', 'rejected']),
+      learning: z.string().min(8).max(300).optional(),
     },
   }, async (args) => {
     try {
-      const ref = runWorkers.get(args.run_id) ?? findRun(deps.config.runsDir, args.run_id)
-      if (!ref) throw new Error(`Unknown run_id "${args.run_id}" — no delegate trace found`)
+      // Synchronous guard-then-reserve: there is no `await` between the check and the
+      // `reported.add`, so two concurrent calls for the same run_id cannot both pass —
+      // whichever handler's synchronous prefix runs first reserves the slot before the
+      // event loop can start the other's. Everything after this point is genuinely async
+      // (lock acquisition, state mutation), so it must not gate the idempotency check.
+      if (reported.has(args.run_id) || hasOutcome(deps.config.runsDir, args.run_id)) {
+        throw new Error(`Outcome for "${args.run_id}" was already reported`)
+      }
+      reported.add(args.run_id)
+      try {
+        const ref = runWorkers.get(args.run_id) ?? findRun(deps.config.runsDir, args.run_id)
+        if (!ref) throw new Error(`Unknown run_id "${args.run_id}" — no delegate trace found`)
+        const catalog = loadRegistry(deps.registryPath)
+        const learning = args.learning ? normalizeNote(args.learning) : undefined
+        await withStateLock(deps.statePath, catalog, (s) => {
+          let next = applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome as Outcome)
+          if (learning) {
+            next = addLearning(next, ref.model, {
+              ts: new Date().toISOString(), note: learning,
+              tags: ref.tags, outcome: args.outcome as Outcome, runId: args.run_id,
+            })
+          }
+          return { state: next, result: null }
+        })
+        appendTrace(deps.config.runsDir, {
+          kind: 'outcome', runId: args.run_id, model: ref.model, tags: ref.tags,
+          outcome: args.outcome, ...(learning ? { learning } : {}),
+        })
+        return ok(JSON.stringify({ recorded: true, model: ref.model, outcome: args.outcome }))
+      } catch (e) {
+        // Genuine failure (unknown run_id, lock timeout, etc.) — release the reservation so a
+        // legitimate retry of the same run_id isn't permanently blocked.
+        reported.delete(args.run_id)
+        throw e
+      }
+    } catch (e) { return err(e) }
+  })
+
+  server.registerTool('record_learning', {
+    description: 'Record or correct a behavioral learning for ANY catalog model (losers, '
+      + 'forfeiters, judges) — `note` appends (deduped, 10-cap FIFO), `forget` removes that '
+      + "model's notes containing the substring. Learnings become coach's-notes briefings "
+      + 'in future matches.',
+    inputSchema: {
+      model: z.string(),
+      note: z.string().min(8).max(300).optional(),
+      tags: z.array(capabilityTagSchema).optional(),
+      forget: z.string().min(4).optional(),
+    },
+  }, async (args) => {
+    try {
+      if (!args.note && !args.forget) throw new Error('Provide note, forget, or both')
       const catalog = loadRegistry(deps.registryPath)
-      await withStateLock(deps.statePath, catalog, (s) => ({
-        state: applyOutcome(s, ref.model, ref.tags as CapabilityTag[], args.outcome), result: null,
-      }))
-      appendTrace(deps.config.runsDir, {
-        kind: 'outcome', runId: args.run_id, model: ref.model, tags: ref.tags, outcome: args.outcome,
+      if (!catalog.models.some((m) => m.id === args.model)) {
+        throw new Error(`Model "${args.model}" is not in the catalog. Call list_models.`)
+      }
+      const note = args.note ? normalizeNote(args.note) : undefined
+      const count = await withStateLock(deps.statePath, catalog, (s) => {
+        let next = args.forget ? forgetLearnings(s, args.model, args.forget) : s
+        if (note) {
+          next = addLearning(next, args.model, {
+            ts: new Date().toISOString(), note, tags: args.tags ?? [],
+          })
+        }
+        return { state: next, result: next.models[args.model]?.learnings.length ?? 0 }
       })
-      return ok(JSON.stringify({ recorded: true, model: ref.model, outcome: args.outcome }))
+      appendTrace(deps.config.runsDir, {
+        kind: 'learning', model: args.model,
+        ...(note ? { note } : {}), ...(args.forget ? { forget: args.forget } : {}),
+        tags: args.tags ?? [],
+      })
+      return ok(JSON.stringify({ recorded: true, model: args.model, learnings: count }))
     } catch (e) { return err(e) }
   })
 

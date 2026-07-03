@@ -30,16 +30,31 @@ function setup() {
         ratings: { 'code-gen': { elo: 1200, matches: 9 } },
         outcomes: { accepted: 0, reworked: 0, rejected: 0 },
         availabilityStrikes: 0,
+        learnings: [],
       },
       'w/coder2': {
         ratings: { 'code-gen': { elo: 1000, matches: 9 } },
         outcomes: { accepted: 0, reworked: 0, rejected: 0 },
         availabilityStrikes: 0,
+        learnings: [],
       },
     },
     judgeAgreement: { agree: 0, total: 0 },
   })
   return { workspace, registryPath, statePath, cfg }
+}
+
+function plantState(path_: string, ratings: Record<string, { elo: number; matches: number }>) {
+  saveState(path_, {
+    version: 1,
+    models: Object.fromEntries(Object.entries(ratings).map(([id, r]) => [id, {
+      ratings: { 'code-gen': r, review: r },
+      outcomes: { accepted: 0, reworked: 0, rejected: 0 },
+      availabilityStrikes: 0,
+      learnings: [],
+    }])),
+    judgeAgreement: { agree: 0, total: 0 },
+  })
 }
 
 function reply(partial: Partial<ChatResult>): ChatResult {
@@ -105,5 +120,22 @@ describe('nva cli', () => {
     await cli.parseAsync(['node', 'nva', 'leaderboard', '--md'])
     expect(out.join('\n')).toContain('## code-gen')
     expect(out.join('\n')).toContain('| 1 | w/coder | 1200 | 9 |')
+  })
+
+  it('board writes the match board html and prints the path', async () => {
+    const { workspace, registryPath, cfg, statePath } = setup()
+    plantState(statePath, { 'w/coder': { elo: 1200, matches: 9 } })
+    const outPath = path.join(workspace, 'board.html')
+    const out: string[] = []
+    const cli = buildCli({
+      config: cfg, registryPath, statePath, launchDir: workspace,
+      client: { chat: async () => { throw new Error('unused') } },
+      print: (s) => out.push(s),
+    })
+    await cli.parseAsync(['node', 'nva', 'board', '--out', outPath])
+    expect(out.join('\n')).toContain(outPath)
+    const html = fs.readFileSync(outPath, 'utf8')
+    expect(html).toContain('NV-AGENTS ARENA')
+    expect(html).toContain('w/coder')
   })
 })
