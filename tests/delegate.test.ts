@@ -120,6 +120,7 @@ describe('delegate', () => {
     expect(res.stats.requests).toBe(2)
     expect(res.statsBreakdown.worker.requests).toBe(1)
     expect(res.statsBreakdown.reviewer.requests).toBe(1)
+    expect(res.statsBreakdown.contestants).toBeUndefined()
   })
 
   it('revises once after a failed critique', async () => {
@@ -200,6 +201,9 @@ describe('delegate', () => {
     const winnerElo = getRating(state, res.workerModel, 'code-gen').elo
     expect(winnerElo).toBeGreaterThan(1010 - 1) // winner gained
     expect(res.arena?.eloDeltas[res.workerModel]).toBeGreaterThan(0)
+    const contestants = res.statsBreakdown.contestants!
+    expect(Object.keys(contestants)).toHaveLength(3)
+    for (const s of Object.values(contestants)) expect(s.requests).toBeGreaterThanOrEqual(1)
   })
 
   it('single mode when champion dominates', async () => {

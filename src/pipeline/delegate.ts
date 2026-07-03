@@ -29,6 +29,7 @@ export interface DelegateDeps {
 export interface StatsBreakdown {
   worker: WorkerStats
   reviewer: WorkerStats
+  contestants?: Record<string, WorkerStats>
 }
 
 export interface ArenaInfo {
@@ -136,6 +137,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     ranking: outcome.ranking, agreement: outcome.agreement, revised: outcome.revised,
     requests: stats.requests, promptTokens: stats.promptTokens, completionTokens: stats.completionTokens,
     worker: workerStats, reviewer: outcome.usage.judges,
+    contestantStats: outcome.usage.contestants,
     eloDeltas, changeCount: outcome.winner.changes.length,
   })
 
@@ -147,7 +149,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     rationale: outcome.winner.result.rationale,
     changes: outcome.winner.changes,
     critique, revised: outcome.revised, stats,
-    statsBreakdown: { worker: workerStats, reviewer: outcome.usage.judges },
+    statsBreakdown: { worker: workerStats, reviewer: outcome.usage.judges, contestants: outcome.usage.contestants },
     taskProfile: req.taskProfile,
     arena: {
       contestants: decision.contestants.map((c) => c.id),
