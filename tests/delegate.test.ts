@@ -29,6 +29,7 @@ function plantState(path_: string, ratings: Record<string, { elo: number; matche
       ratings: { 'code-gen': r, review: r },
       outcomes: { accepted: 0, reworked: 0, rejected: 0 },
       availabilityStrikes: 0,
+      learnings: [],
     }])),
     judgeAgreement: { agree: 0, total: 0 },
   })

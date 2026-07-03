@@ -1,5 +1,7 @@
 import type { CapabilityTag } from '../registry/schema'
-import { getRating, type ModelState, type NvState, type TagRating } from '../registry/state'
+import {
+  getRating, LEARNING_CAP, type Learning, type ModelState, type NvState, type TagRating,
+} from '../registry/state'
 
 export const K_FACTOR = 32
 export const OUTCOME_NUDGE = { accepted: 8, reworked: -4, rejected: -16 } as const
@@ -38,6 +40,7 @@ const EMPTY_MODEL: ModelState = {
   ratings: {},
   outcomes: { accepted: 0, reworked: 0, rejected: 0 },
   availabilityStrikes: 0,
+  learnings: [],
 }
 
 function withModel(state: NvState, modelId: string, f: (m: ModelState) => ModelState): NvState {
@@ -88,4 +91,19 @@ export function applyOutcome(
 
 export function addAvailabilityStrike(state: NvState, modelId: string): NvState {
   return withModel(state, modelId, (m) => ({ ...m, availabilityStrikes: m.availabilityStrikes + 1 }))
+}
+
+export function addLearning(state: NvState, modelId: string, entry: Learning): NvState {
+  return withModel(state, modelId, (m) => {
+    const kept = m.learnings.filter((l) => l.note !== entry.note)
+    return { ...m, learnings: [...kept, entry].slice(-LEARNING_CAP) }
+  })
+}
+
+export function forgetLearnings(state: NvState, modelId: string, substring: string): NvState {
+  if (!state.models[modelId]) return state
+  return withModel(state, modelId, (m) => ({
+    ...m,
+    learnings: m.learnings.filter((l) => !l.note.includes(substring)),
+  }))
 }

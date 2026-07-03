@@ -30,11 +30,13 @@ function setup() {
         ratings: { 'code-gen': { elo: 1200, matches: 9 } },
         outcomes: { accepted: 0, reworked: 0, rejected: 0 },
         availabilityStrikes: 0,
+        learnings: [],
       },
       'w/coder2': {
         ratings: { 'code-gen': { elo: 1000, matches: 9 } },
         outcomes: { accepted: 0, reworked: 0, rejected: 0 },
         availabilityStrikes: 0,
+        learnings: [],
       },
     },
     judgeAgreement: { agree: 0, total: 0 },
