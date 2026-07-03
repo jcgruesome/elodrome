@@ -8,8 +8,18 @@ function escapeHtml(s: string): string {
     .replaceAll('"', '&quot;')
 }
 
-const fmt = (n: number) => n.toLocaleString('en-US')
-const usd = (n: number) => `$${n.toFixed(2)}`
+// Numeric BoardData fields are typed `number`, but — like mode/outcome above —
+// that guarantee is compile-time only: they originate from JSON.parse() on
+// trace JSONL files read from disk, so a corrupted/tampered trace line can put
+// a non-number where a number is expected. safeNumber is the render-boundary
+// guard: anything that isn't actually a finite number renders as 0 instead of
+// passing through raw (XSS) or throwing (e.g. `.toFixed` on a string, DoS).
+function safeNumber(n: unknown): number {
+  return typeof n === 'number' && Number.isFinite(n) ? n : 0
+}
+
+const fmt = (n: unknown) => safeNumber(n).toLocaleString('en-US')
+const usd = (n: unknown) => `$${safeNumber(n).toFixed(2)}`
 
 function deltaHtml(r: BoutRanking): string {
   if (r.delta === undefined || r.delta === 0) return '<span class="delta flat">±0</span>'
@@ -53,15 +63,18 @@ function boutHtml(b: Bout): string {
 }
 
 export function renderBoardHtml(d: BoardData): string {
-  const agreementLine = d.judgeAgreement.total > 0
-    ? `Judge agreement: ${Math.round((d.judgeAgreement.agree / d.judgeAgreement.total) * 100)}% (${d.judgeAgreement.agree}/${d.judgeAgreement.total} panels)`
+  const judgeAgree = safeNumber(d.judgeAgreement.agree)
+  const judgeTotal = safeNumber(d.judgeAgreement.total)
+  const agreementLine = judgeTotal > 0
+    ? `Judge agreement: ${Math.round((judgeAgree / judgeTotal) * 100)}% (${judgeAgree}/${judgeTotal} panels)`
     : ''
-  const corrupt = d.corruptLines > 0
-    ? ` <b>${d.corruptLines} corrupt trace line(s) skipped.</b>`
+  const corruptLines = safeNumber(d.corruptLines)
+  const corrupt = corruptLines > 0
+    ? ` <b>${corruptLines} corrupt trace line(s) skipped.</b>`
     : ''
   const ladders = d.ladders.map((l) => `
     <div class="ladder"><h3>${escapeHtml(l.tag)}</h3>
-      ${l.rows.map((r) => `<div class="lrow"><span class="r">${r.rank}</span><span class="name">${escapeHtml(r.id)}</span><span class="elo">${Math.round(r.elo)}</span></div>`).join('\n      ')}
+      ${l.rows.map((r) => `<div class="lrow"><span class="r">${safeNumber(r.rank)}</span><span class="name">${escapeHtml(r.id)}</span><span class="elo">${Math.round(safeNumber(r.elo))}</span></div>`).join('\n      ')}
     </div>`).join('\n')
   const scouting = d.scouting.length > 0 ? `
   <section class="scouting"><h2>Scouting report</h2>
@@ -89,10 +102,10 @@ ${TOKEN_CSS}
   </section>
   <section><h2>Season record — orchestrator verdicts</h2>
     <div class="record">
-      <span class="w">${d.record.accepted} accepted</span>
-      <span class="rw">${d.record.reworked} reworked</span>
-      <span class="l">${d.record.rejected} rejected</span>
-      <span>${d.counters.aborted} no-contest</span>
+      <span class="w">${safeNumber(d.record.accepted)} accepted</span>
+      <span class="rw">${safeNumber(d.record.reworked)} reworked</span>
+      <span class="l">${safeNumber(d.record.rejected)} rejected</span>
+      <span>${safeNumber(d.counters.aborted)} no-contest</span>
     </div>
   </section>
   ${scouting}
@@ -101,7 +114,7 @@ ${TOKEN_CSS}
   <section><h2>Frontier tokens not spent</h2>
     <div class="counter-grid">
       <div class="counter wide"><div class="num accent">${fmt(d.counters.promptTokens + d.counters.completionTokens)}</div>
-        <div class="lbl">NIM tokens across ${d.counters.runs} runs (all-time) · ${fmt(d.counters.promptTokens)} in / ${fmt(d.counters.completionTokens)} out</div></div>
+        <div class="lbl">NIM tokens across ${safeNumber(d.counters.runs)} runs (all-time) · ${fmt(d.counters.promptTokens)} in / ${fmt(d.counters.completionTokens)} out</div></div>
       <div class="counter"><div class="num">${usd(d.counters.sonnetEquivUsd)}</div><div class="lbl">Sonnet-equivalent saved</div></div>
       <div class="counter"><div class="num">${usd(d.counters.opusEquivUsd)}</div><div class="lbl">Opus-equivalent saved</div></div>
       <div class="counter"><div class="num">${fmt(d.counters.requests)}</div><div class="lbl">API requests</div></div>

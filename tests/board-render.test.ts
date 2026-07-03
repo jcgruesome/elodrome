@@ -91,3 +91,41 @@ describe('renderBoardHtml — untrusted trace data', () => {
     expect(html).toContain('outcome-&lt;script&gt;alert(1)&lt;/script&gt;')
   })
 })
+
+describe('renderBoardHtml — untrusted numeric trace data', () => {
+  // Numeric fields (counters, record, ladder, judgeAgreement, corruptLines) are
+  // typed `number` on BoardData, but that's compile-time only: they too
+  // originate from JSON.parse() on trace JSONL files read from disk, so a
+  // corrupted/tampered trace line can put arbitrary text where a number is
+  // expected. Simulate that the same way the mode/outcome tests do above.
+  const scriptPayload = '<script>alert(1)</script>'
+
+  it('does not pass a tampered counters.promptTokens string through raw', () => {
+    const tampered: BoardData = {
+      ...data,
+      counters: { ...data.counters, promptTokens: scriptPayload as unknown as number },
+    }
+    const html = renderBoardHtml(tampered)
+    expect(html).not.toContain(scriptPayload)
+  })
+
+  it('does not pass a tampered record.accepted string through raw', () => {
+    const tampered: BoardData = {
+      ...data,
+      record: { ...data.record, accepted: scriptPayload as unknown as number },
+    }
+    const html = renderBoardHtml(tampered)
+    expect(html).not.toContain(scriptPayload)
+  })
+
+  it('does not throw and falls back to a sane formatted value when counters.sonnetEquivUsd is not a number', () => {
+    const tampered: BoardData = {
+      ...data,
+      counters: { ...data.counters, sonnetEquivUsd: scriptPayload as unknown as number },
+    }
+    expect(() => renderBoardHtml(tampered)).not.toThrow()
+    const html = renderBoardHtml(tampered)
+    expect(html).toContain('$0.00')
+    expect(html).not.toContain(scriptPayload)
+  })
+})
