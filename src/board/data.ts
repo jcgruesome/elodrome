@@ -97,9 +97,21 @@ export function buildBoardData(
   state: NvState,
   opts: { days?: number; repo?: string } = {},
 ): BoardData {
-  const { records, corruptLines } = readRecords(runsDir)
+  const { records, corruptLines: parseErrors } = readRecords(runsDir)
   const outcomes = new Map(records.filter((r) => r.kind === 'outcome').map((r) => [r.runId as string, r]))
-  const runs = records.filter((r) => r.kind === 'tournament' || r.kind === 'delegate')
+  const candidates = records.filter((r) => r.kind === 'tournament' || r.kind === 'delegate')
+  // A run record must carry its identity to be reportable: runId always, and
+  // workerModel too unless the tournament was aborted before a winner existed
+  // (the forfeit path in delegate.ts never sets workerModel — that's expected,
+  // not corruption). Records failing this are indistinguishable from
+  // incomplete/buggy trace data, so they're excluded and counted as corrupt.
+  const hasIdentity = (r: Rec) => {
+    if (typeof r.runId !== 'string' || r.runId === '') return false
+    if (r.status === 'aborted') return true
+    return typeof r.workerModel === 'string' && r.workerModel !== ''
+  }
+  const runs = candidates.filter(hasIdentity)
+  const corruptLines = parseErrors + (candidates.length - runs.length)
   const completed = runs.filter((r) => r.status !== 'aborted')
 
   const cutoff = opts.days !== undefined ? Date.now() - opts.days * 86_400_000 : undefined

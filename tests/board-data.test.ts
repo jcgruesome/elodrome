@@ -79,4 +79,25 @@ describe('buildBoardData', () => {
     expect(filtered.bouts).toEqual([]) // ts older than a 0-day window
     expect(filtered.counters.runs).toBe(1) // counters stay all-time
   })
+
+  it('treats a delegate record missing runId as corrupt, not a real run', () => {
+    const dir = writeTraces([
+      { ts: '2026-07-03T02:00:00Z', kind: 'delegate', status: 'ok', taskProfile: ['code-gen'], workerModel: 'a/x', reviewerModel: 'b/y', requests: 1, promptTokens: 10, completionTokens: 5 },
+      'this line is not json{{{',
+    ])
+    const d = buildBoardData(dir, catalog, state)
+    expect(d.bouts).toHaveLength(0)
+    expect(d.counters.runs).toBe(0)
+    expect(d.corruptLines).toBe(2) // 1 genuinely-unparseable line + 1 record missing runId
+  })
+
+  it('treats a delegate record missing workerModel as corrupt, not a real run', () => {
+    const dir = writeTraces([
+      { ts: '2026-07-03T02:00:00Z', kind: 'delegate', runId: 'run_d_00000004', status: 'ok', taskProfile: ['code-gen'], reviewerModel: 'b/y', requests: 1, promptTokens: 10, completionTokens: 5 },
+    ])
+    const d = buildBoardData(dir, catalog, state)
+    expect(d.bouts).toHaveLength(0)
+    expect(d.counters.runs).toBe(0)
+    expect(d.corruptLines).toBe(1)
+  })
 })
