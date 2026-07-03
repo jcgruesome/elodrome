@@ -13,14 +13,26 @@ export function appendTrace(runsDir: string, record: Record<string, unknown>): v
   fs.appendFileSync(path.join(runsDir, `${day}.jsonl`), `${line}\n`)
 }
 
-export function findRunModel(runsDir: string, runId: string): string | undefined {
+export interface RunRef { model: string; tags: string[] }
+
+export function findRun(runsDir: string, runId: string): RunRef | undefined {
   if (!fs.existsSync(runsDir)) return undefined
   for (const file of fs.readdirSync(runsDir).filter((f) => f.endsWith('.jsonl'))) {
     for (const line of fs.readFileSync(path.join(runsDir, file), 'utf8').split('\n')) {
       if (!line.trim()) continue
       const rec = JSON.parse(line) as Record<string, unknown>
-      if (rec.runId === runId && rec.kind === 'delegate') return rec.workerModel as string
+      if (
+        rec.runId === runId
+        && (rec.kind === 'delegate' || rec.kind === 'tournament')
+        && typeof rec.workerModel === 'string'
+      ) {
+        return { model: rec.workerModel, tags: (rec.taskProfile as string[] | undefined) ?? [] }
+      }
     }
   }
   return undefined
+}
+
+export function findRunModel(runsDir: string, runId: string): string | undefined {
+  return findRun(runsDir, runId)?.model
 }

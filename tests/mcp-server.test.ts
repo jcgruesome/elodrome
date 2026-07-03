@@ -9,15 +9,19 @@ import { loadConfig } from '../src/config'
 import { buildServer, formatToolResult } from '../src/mcp/server'
 import type { ChatResult } from '../src/nim/client'
 import { loadRegistry } from '../src/registry/registry'
+import { getRating, loadState, saveState } from '../src/registry/state'
 
 let workspace: string
 let registryPath: string
+let statePath: string
 let cfg: ReturnType<typeof loadConfig>
 
 const registryYaml = `
 version: 1
 models:
   - { id: w/coder, name: W, tags: [code-gen], contextWindow: 128000, toolCalling: reliable }
+  - { id: w/coder2, name: W2, tags: [code-gen], contextWindow: 128000, toolCalling: reliable }
+  - { id: w/coder3, name: W3, tags: [code-gen], contextWindow: 128000, toolCalling: reliable }
   - { id: r/rev, name: R, tags: [review], contextWindow: 64000, toolCalling: none }
 `
 
@@ -27,6 +31,24 @@ beforeEach(() => {
   registryPath = path.join(workspace, 'models.yaml')
   fs.writeFileSync(registryPath, registryYaml)
   cfg = loadConfig({ NVIDIA_API_KEY: 'k', NVAGENTS_RUNS_DIR: path.join(workspace, '.runs') })
+  statePath = path.join(workspace, 'state.json')
+  // Dominant champion so `delegate` exercises the single path deterministically.
+  saveState(statePath, {
+    version: 1,
+    models: {
+      'w/coder': {
+        ratings: { 'code-gen': { elo: 1200, matches: 9 } },
+        outcomes: { accepted: 0, reworked: 0, rejected: 0 },
+        availabilityStrikes: 0,
+      },
+      'w/coder2': {
+        ratings: { 'code-gen': { elo: 1000, matches: 9 } },
+        outcomes: { accepted: 0, reworked: 0, rejected: 0 },
+        availabilityStrikes: 0,
+      },
+    },
+    judgeAgreement: { agree: 0, total: 0 },
+  })
 })
 
 function reply(partial: Partial<ChatResult>): ChatResult {
@@ -48,7 +70,7 @@ const pass = reply({ content: '{"verdict":"pass","issues":[]}' })
 async function connect(replies: ChatResult[]) {
   let i = 0
   const client = { chat: async () => { const r = replies[i]; i += 1; if (!r) throw new Error('exhausted'); return r } }
-  const server = buildServer({ config: cfg, registryPath, client, launchDir: workspace })
+  const server = buildServer({ config: cfg, registryPath, statePath, client, launchDir: workspace })
   const mcp = new Client({ name: 'test', version: '0.0.0' })
   const [a, b] = InMemoryTransport.createLinkedPair()
   await Promise.all([server.connect(a), mcp.connect(b)])
@@ -78,8 +100,9 @@ describe('mcp server', () => {
     expect(parsed.status).toBe('ok')
 
     await mcp.callTool({ name: 'report_outcome', arguments: { run_id: parsed.runId, outcome: 'accepted' } })
-    const reg = loadRegistry(registryPath)
-    expect(reg.models.find((m) => m.id === 'w/coder')?.outcomes.accepted).toBe(1)
+    const registry = loadRegistry(registryPath)
+    const state = loadState(statePath, registry)
+    expect(state.models['w/coder']?.outcomes.accepted).toBe(1)
   })
 
   it('consult does a single chat with no tools', async () => {
@@ -96,6 +119,23 @@ describe('mcp server', () => {
     })
     expect((res as { isError?: boolean }).isError).toBe(true)
     expect(textOf(res)).toMatch(/outside/i)
+  })
+
+  it('leaderboard tool returns ranked sections', async () => {
+    const mcp = await connect([])
+    const res = await mcp.callTool({ name: 'leaderboard', arguments: {} })
+    const parsed = JSON.parse(textOf(res)) as { sections: Array<{ tag: string }> }
+    expect(Array.isArray(parsed.sections)).toBe(true)
+  })
+
+  it('report_outcome nudges elo on the run profile tags', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({ name: 'delegate', arguments: { task: 't', workspace, task_profile: ['code-gen'] } })
+    const { runId } = JSON.parse(textOf(res)) as { runId: string }
+    await mcp.callTool({ name: 'report_outcome', arguments: { run_id: runId, outcome: 'accepted' } })
+    const state = loadState(statePath, loadRegistry(registryPath))
+    expect(state.models['w/coder']?.outcomes.accepted).toBe(1)
+    expect(getRating(state, 'w/coder', 'code-gen').elo).toBe(1208) // planted 1200 + 8
   })
 })
 

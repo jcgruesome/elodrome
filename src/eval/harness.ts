@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import YAML from 'yaml'
 import { z } from 'zod'
+import { NimError } from '../nim/client'
 import { delegate, type DelegateDeps } from '../pipeline/delegate'
-import { loadRegistry } from '../registry/registry'
-import { capabilityTagSchema, type Registry } from '../registry/schema'
+import { capabilityTagSchema } from '../registry/schema'
+import { withStateLock } from '../registry/state'
 
 const suiteSchema = z.object({
   cases: z.array(z.object({
@@ -23,9 +24,13 @@ export interface EvalResult {
 }
 
 export async function runEvalSuite(
-  deps: DelegateDeps & { registryPath: string },
+  deps: DelegateDeps,
   opts: { suitePath: string; workspace: string; modelId: string },
 ): Promise<EvalResult> {
+  if (!deps.catalog.models.some((m) => m.id === opts.modelId)) {
+    throw new Error(`Model "${opts.modelId}" is not in the registry. Call list_models.`)
+  }
+
   const suite = suiteSchema.parse(YAML.parse(fs.readFileSync(opts.suitePath, 'utf8')))
   const failures: string[] = []
 
@@ -40,7 +45,8 @@ export async function runEvalSuite(
       })
       const haystack = [res.summary, ...res.changes.map((c) => c.content)].join('\n')
       passedCase = res.status === 'ok' && haystack.includes(testCase.check.contains)
-    } catch {
+    } catch (err) {
+      if (err instanceof NimError) throw err
       passedCase = false
     }
     if (!passedCase) failures.push(testCase.id)
@@ -49,15 +55,19 @@ export async function runEvalSuite(
   const total = suite.cases.length
   const passed = total - failures.length
   const score = passed / total
-  writeScore(deps.registryPath, opts.modelId, score)
+  await writeScore(deps.statePath, deps.catalog, opts.modelId, score)
   return { modelId: opts.modelId, passed, total, score, failures }
 }
 
-function writeScore(registryPath: string, modelId: string, score: number): void {
-  const registry = loadRegistry(registryPath)
-  const updated: Registry = {
-    ...registry,
-    models: registry.models.map((m) => (m.id === modelId ? { ...m, evalScore: score } : m)),
-  }
-  fs.writeFileSync(registryPath, YAML.stringify(updated))
+async function writeScore(statePath: string, catalog: DelegateDeps['catalog'], modelId: string, score: number): Promise<void> {
+  await withStateLock(statePath, catalog, (s) => ({
+    state: {
+      ...s,
+      models: {
+        ...s.models,
+        [modelId]: { ...s.models[modelId]!, evalScore: score },
+      },
+    },
+    result: null,
+  }))
 }

@@ -27,6 +27,8 @@ frontier model (you).
    `⇄ <workerModel> (auto|explicit) → review <reviewerModel>: <verdict>[, revised] · <N> req · <prompt>/<completion> tok · <outcome>`
    e.g. `⇄ z-ai/glm-5.2 (auto) → review deepseek-v4-pro: pass · 2 req · 4.1k/2.5k tok · reworked`.
    "auto" = registry ranked via task_profile; "explicit" = you passed `model`.
+   For tournaments (`mode: "tournament"`), use:
+   `🏆 <workerModel> beat <other ranked contestants> (judges: <judges>[, split decision if agreement=false]) · <N> req · <prompt>/<completion> tok · <outcome>`
 
 **Overrides**: "do this yourself" means no delegation; "send this to <model>"
 means delegate with that explicit `model`. Use `consult` for quick second

@@ -2,10 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  loadRegistry, recordOutcome, selectModel, winRate,
-} from '../src/registry/registry'
-import type { Registry } from '../src/registry/schema'
+import { loadRegistry, winRate } from '../src/registry/registry'
 
 const fixture = `
 version: 1
@@ -43,29 +40,10 @@ describe('registry', () => {
     expect(() => loadRegistry(p)).toThrow()
   })
 
-  it('selects by tags and requireTools gate', () => {
-    const reg = loadRegistry(writeFixture())
-    expect(selectModel(reg, ['code-gen'], { requireTools: true }).id).toBe('a/coder')
-    expect(() => selectModel(reg, ['review'], { requireTools: true }))
-      .toThrow(/No registry model/)
-  })
-
-  it('excludes a model id', () => {
-    const reg = loadRegistry(writeFixture())
-    expect(() => selectModel(reg, ['code-gen'], { excludeId: 'a/coder' })).toThrow()
-  })
-
   it('computes win rate with 0.5 default', () => {
     const reg = loadRegistry(writeFixture())
-    expect(winRate(reg.models[0]!)).toBe(0.5)
-    expect(winRate(reg.models[1]!)).toBe(0.8)
-  })
-
-  it('records outcomes back to disk', () => {
-    const p = writeFixture()
-    recordOutcome(p, 'a/coder', 'accepted')
-    const reg2: Registry = loadRegistry(p)
-    expect(reg2.models.find((m) => m.id === 'a/coder')?.outcomes.accepted).toBe(1)
+    expect(winRate(reg.models[0]!.outcomes)).toBe(0.5)
+    expect(winRate(reg.models[1]!.outcomes)).toBe(0.8)
   })
 
   it('ships a valid curated registry', () => {

@@ -100,3 +100,11 @@ async function runTool(sandbox: Sandbox, call: ToolCall): Promise<string> {
 function safeJson(s: string): unknown {
   try { return JSON.parse(s) } catch { return undefined }
 }
+
+export function addStats(a: WorkerStats, b: WorkerStats): WorkerStats {
+  return {
+    requests: a.requests + b.requests,
+    promptTokens: a.promptTokens + b.promptTokens,
+    completionTokens: a.completionTokens + b.completionTokens,
+  }
+}
