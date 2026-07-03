@@ -1,0 +1,23 @@
+cases:
+  - id: pure-function
+    task: >
+      Create a new file src/util/slug.ts exporting a pure function
+      slugify(input: string): string that lowercases, trims, replaces runs of
+      non-alphanumeric characters with single hyphens, and strips leading/
+      trailing hyphens. No dependencies.
+    profile: [code-gen]
+    check: { contains: "export function slugify" }
+  - id: read-then-modify
+    task: >
+      Read src/config.ts and produce a change adding a new optional env var
+      NVAGENTS_MAX_INLINE_CHARS (number, default 20000) as field maxInlineChars
+      on Config, following the existing style exactly.
+    profile: [code-gen]
+    check: { contains: "maxInlineChars" }
+  - id: research-digest
+    task: >
+      Explore this repository (read-only) and write a 10-line architecture
+      summary as a change creating docs/ARCHITECTURE-DIGEST.md. Mention the
+      pipeline stages and the sandbox.
+    profile: [code-gen, research]
+    check: { contains: "sandbox" }
