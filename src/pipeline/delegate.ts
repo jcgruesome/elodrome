@@ -40,6 +40,7 @@ export interface ArenaInfo {
   judgeIssues: Record<string, string[]>
   agreement: boolean | null
   eloDeltas: Record<string, number>
+  verify: Record<string, VerifyResult>
 }
 
 export interface DelegateResponse {
@@ -160,6 +161,9 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     worker: workerStats, reviewer: outcome.usage.judges,
     contestantStats: outcome.usage.contestants,
     eloDeltas, changeCount: outcome.winner.changes.length,
+    verify: Object.fromEntries(
+      Object.entries(outcome.verify).map(([m, v]) => [m, { status: v.status, checkNames: v.checks.map((c) => c.name) }]),
+    ),
   })
 
   return {
@@ -176,8 +180,9 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
       contestants: decision.contestants.map((c) => c.id),
       ranking: outcome.ranking, judges: outcome.judges,
       judgeIssues: outcome.judgeIssues, agreement: outcome.agreement, eloDeltas,
+      verify: outcome.verify,
     },
-    verify: { status: 'skipped', checks: [], reason: 'tournament verify wired in a later task' },
+    verify: outcome.verify[outcome.winner.model] ?? { status: 'skipped', checks: [] },
   }
 }
 
