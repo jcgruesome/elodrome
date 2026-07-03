@@ -83,9 +83,10 @@ export function applyChangesToWorktree(
   changes: ValidatedChange[],
 ): void {
   const resolvedRoot = path.resolve(worktreeRoot)
+  const resolvedConfigPath = path.resolve(worktreeRoot, workspaceOffset, VERIFY_CONFIG_FILENAME)
   for (const change of changes) {
-    if (change.path === VERIFY_CONFIG_FILENAME) continue
     const target = path.resolve(worktreeRoot, workspaceOffset, change.path)
+    if (target.toLowerCase() === resolvedConfigPath.toLowerCase()) continue
     if (target !== resolvedRoot && !target.startsWith(resolvedRoot + path.sep)) {
       throw new Error(`Change path "${change.path}" escapes the verify worktree`)
     }
