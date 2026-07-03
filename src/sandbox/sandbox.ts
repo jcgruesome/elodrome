@@ -66,13 +66,17 @@ export function validateWorkspace(workspace: string, launchDir = process.cwd()):
 }
 
 export class Sandbox {
+  // Canonicalized (symlink-free) at construction time so `root` and the
+  // real filesystem location are always the same thing. Without this, a
+  // symlinked ancestor of the workspace itself (e.g. macOS's /tmp ->
+  // /private/tmp) would make root-relative computations elsewhere
+  // (list_dir, glob) disagree with the realpath-validated paths resolve()
+  // returns below.
   readonly root: string
-  private readonly realRoot: string
   private ig: Ignore
 
   constructor(root: string) {
-    this.root = path.resolve(root)
-    this.realRoot = fs.realpathSync(this.root)
+    this.root = fs.realpathSync(path.resolve(root))
     this.ig = ignore()
     const gitignorePath = path.join(this.root, '.gitignore')
     if (fs.existsSync(gitignorePath)) {
@@ -98,16 +102,20 @@ export class Sandbox {
 
     // Lexical containment above is not enough: a symlink inside the root can
     // point anywhere on disk. Resolve the real (symlink-free) location and
-    // re-check both containment and the denylist against it.
+    // re-check both containment and the denylist against it. We return this
+    // resolved path (not the lexical `abs`) so callers read/stat the exact
+    // location that was validated — otherwise a symlink swapped in between
+    // this check and the caller's later filesystem call could redirect the
+    // read past the check (TOCTOU).
     const realAbs = realpathDeepestExisting(abs)
-    if (!isWithin(this.realRoot, realAbs)) {
+    if (!isWithin(this.root, realAbs)) {
       throw new SandboxError(`Path "${relPath}" escapes the workspace via a symlink`)
     }
-    const realRel = path.relative(this.realRoot, realAbs)
+    const realRel = path.relative(this.root, realAbs)
     if (this.isDenied(realRel)) {
       throw new SandboxError(`Path "${relPath}" is denied (secrets/.git/.gitignore rules)`)
     }
 
-    return abs
+    return realAbs
   }
 }
