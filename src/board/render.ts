@@ -80,11 +80,17 @@ export function renderBoardHtml(d: BoardData): string {
   <section class="scouting"><h2>Scouting report</h2>
     ${d.scouting.map((s) => `<div class="scout"><span class="fighter">${escapeHtml(s.model)}</span><span class="note">${escapeHtml(s.note)}</span></div>`).join('\n    ')}
   </section>` : ''
-  return `<title>ELODROME ARENA — ${escapeHtml(d.repo)}</title>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ELODROME ARENA — ${escapeHtml(d.repo)}</title>
 <!-- ReshapeX app-ui tokens — DS bundle snapshot 2026-07-03 -->
 <style>
 ${TOKEN_CSS}
 </style>
+</head>
+<body>
 <div class="hall">
 <header>
   <p class="eyebrow">elodrome · blind model tournaments · NVIDIA NIM free endpoints</p>
@@ -131,7 +137,9 @@ ${TOKEN_CSS}
   from trace files (reporting) — they can legitimately disagree when a trace line is
   corrupt.${corrupt} ${agreementLine}
 </footer>
-</div>`
+</div>
+</body>
+</html>`
 }
 
 const TOKEN_CSS = `
@@ -263,13 +271,13 @@ const TOKEN_CSS = `
   .bout-head b { color: var(--ui-colors-text-primary); }
   .card { padding: 12px 16px 14px; }
 
-  .row { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 7px 0; }
+  .row { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(0, 2fr) auto; gap: 10px; align-items: center; padding: 7px 0; }
   .row + .row { border-top: 1px solid var(--ui-colors-border-subtle); }
   .seed { font-family: var(--ui-typography-mono); font-size: 11px; color: var(--ui-colors-text-secondary); text-align: right; }
   .fighter { font-family: var(--ui-typography-mono); font-size: 13px; overflow-wrap: anywhere; }
   .row.champ .fighter { color: var(--ui-colors-accent); font-weight: 700; }
   .row.champ .fighter::after { content: " ▲"; font-size: 10px; }
-  .tale { font-family: var(--ui-typography-mono); font-size: 11px; color: var(--ui-colors-text-secondary); white-space: nowrap; }
+  .tale { font-family: var(--ui-typography-mono); font-size: 11px; color: var(--ui-colors-text-secondary); overflow-wrap: anywhere; }
   .delta { font-family: var(--ui-typography-mono); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; min-width: 44px; }
   .delta.up { color: var(--ui-colors-semantic-success); }
   .delta.down { color: var(--ui-colors-semantic-error); }

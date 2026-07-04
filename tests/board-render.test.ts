@@ -28,7 +28,9 @@ describe('renderBoardHtml', () => {
   const html = renderBoardHtml(data)
 
   it('is a self-contained ReshapeX-tokened page', () => {
-    expect(html.startsWith('<title>ELODROME ARENA')).toBe(true)
+    expect(html.startsWith('<!DOCTYPE html>')).toBe(true)
+    expect(html).toContain('<meta charset="utf-8">')
+    expect(html).toContain('<title>ELODROME ARENA')
     expect(html).toContain('ReshapeX app-ui tokens — DS bundle snapshot 2026-07-03')
     for (const v of ['#0D1117', '#1C2128', '#73B400', '#FF006E', 'Plus Jakarta Sans', 'JetBrains Mono']) {
       expect(html).toContain(v)
@@ -49,6 +51,17 @@ describe('renderBoardHtml', () => {
     expect(html).toContain('HTTP 503 &lt;down&gt;')
     expect(html).toContain('fabricated &lt;script&gt;alert(1)&lt;/script&gt; citations')
     expect(html).not.toContain('<script>alert(1)</script>')
+  })
+
+  it('bounds the fighter/forfeit-reason grid columns so a long reason cannot starve the name column', () => {
+    // A `.tale` (forfeit reason) with `white-space: nowrap` inside an `auto`
+    // grid track has no width limit — for a long reason (e.g. a raw HTTP error
+    // message) it forces that track to its full content width, squeezing the
+    // `.fighter` name column down to near-zero and wrapping it one character
+    // per line. Both name and reason tracks must be flexible-but-bounded
+    // (`minmax(0, ...)`), and `.tale` must not be `nowrap`, or the bug returns.
+    expect(html).toContain('grid-template-columns: 22px minmax(0, 1fr) minmax(0, 2fr) auto;')
+    expect(html).not.toMatch(/\.tale\s*\{[^}]*white-space:\s*nowrap/)
     expect(html).toContain('Split')
   })
 
