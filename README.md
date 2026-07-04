@@ -119,6 +119,51 @@ as last-place losses in every pairwise Elo result. Each tournament updates Elo p
 profile tag with K=32, so the leaderboard gets measurably better the more you delegate.
 Inspect it with `pnpm elodrome leaderboard --md`.
 
+## Verification
+
+Add an `elodrome.verify.json` file to your workspace root to have delegate actually run
+checks against a worker's proposed changes before they count, instead of relying purely
+on cross-model critique:
+
+```json
+{
+  "typecheck": "pnpm typecheck",
+  "test": "pnpm test"
+}
+```
+
+Each entry is a label mapped to a shell command. After a worker submits, elodrome
+applies its proposed changes to a throwaway `git worktree` (checked out from `HEAD`,
+hooks disabled) and runs every configured command there — all of them, regardless of
+earlier failures, so the worker sees every problem in one pass. If any command fails,
+the worker gets the output back and one chance to resubmit; still failing after that
+marks the run `failed_review`, the same terminal state a failed critique produces. This
+runs in both single and tournament mode — in tournament mode, a contestant that never
+fixes its checks is excluded from winning without aborting the match for the others.
+
+Requirements and behavior:
+
+- **Requires a git repository.** No `elodrome.verify.json`, no git repo, no `git`
+  binary, or an empty repo (no commits yet) all skip verification entirely —
+  `delegate` behaves exactly as it does without this file, so adding it is fully opt-in
+  and backward compatible.
+- **A malformed file fails fast.** Invalid JSON or the wrong shape throws immediately
+  rather than silently skipping, so a typo in the config doesn't masquerade as "not
+  configured."
+- **Per-command timeout** defaults to 180s; override with `ELODROME_VERIFY_TIMEOUT_MS`.
+- **The config itself can't be tampered with.** It's always read from the repo's
+  current `HEAD`, never from the worker's own proposed diff — a worker can't rewrite
+  `elodrome.verify.json` to change what runs during its own verification.
+- Models that need a verify-revision get a note recorded in their learning history
+  (surfaced in future briefings), independent of whether that run ultimately passed.
+
+Documented residual limitations (see
+[the design spec](docs/superpowers/specs/2026-07-03-worker-self-verification-design.md)
+for the full list): verification runs against `HEAD` plus the proposed diff, not any
+uncommitted local changes; git submodules aren't initialized in the throwaway worktree;
+and command output isn't scanned for secrets before being echoed back to the worker or
+written to trace files.
+
 ## Safety model
 
 - **Workers are read-only and sandboxed.** Every file path is resolved through
