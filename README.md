@@ -95,6 +95,7 @@ pnpm elodrome models                                                            
 pnpm elodrome run --task "..." --workspace $PWD --profile code-gen,fast [--model id] # delegate via full pipeline
 pnpm elodrome eval --suite evals/coding-basic.yaml --workspace $PWD --model id       # run an eval suite against a model
 pnpm elodrome leaderboard [--tag code-gen] [--md]                                    # per-tag Elo rankings
+pnpm elodrome board --out board.html [--days 7]                                      # write an HTML Arena match board
 ```
 
 Outputs >20KB from a tool are written to `<runsDir>/payloads/<runId>.json` and returned
@@ -117,7 +118,10 @@ the higher-Elo judge breaking ties. Forfeits are classified by cause: infra fail
 availability strike, while task failures (malformed submits, blown budget/timeout) count
 as last-place losses in every pairwise Elo result. Each tournament updates Elo per
 profile tag with K=32, so the leaderboard gets measurably better the more you delegate.
-Inspect it with `pnpm elodrome leaderboard --md`.
+Inspect it with `pnpm elodrome leaderboard --md`, or render the match-level view with
+`pnpm elodrome board --out board.html`:
+
+![Arena match board rendered from this repo's own delegation history, showing recent bouts, a flagged review that was overturned on inspection, per-tag Elo ladders, and cumulative token/cost savings](docs/assets/arena-board.png)
 
 ## Verification
 
