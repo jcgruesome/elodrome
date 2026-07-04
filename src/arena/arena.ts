@@ -4,6 +4,7 @@ import { invalidReasons, validateChanges } from '../patch/validate'
 import { runCritique } from '../pipeline/critique'
 import type { ModelEntry } from '../registry/schema'
 import type { Sandbox } from '../sandbox/sandbox'
+import { verifyChanges, verifyFailureMessages, type VerifyResult } from '../verify'
 import { addStats, runWorkerLoop, WorkerError, type WorkerStats } from '../worker/loop'
 import { anonymizeEntries, runJudgePanel, type ArenaEntry } from './judge'
 
@@ -32,6 +33,9 @@ export interface ArenaOutcome {
   judgeIssues: Record<string, string[]>
   agreement: boolean | null
   usage: { contestants: Record<string, WorkerStats>; judges: WorkerStats }
+  verify: Record<string, VerifyResult>
+  verifyRevisionUsed: Record<string, boolean>
+  verifyInitialFailures: Record<string, string[]>
 }
 
 export interface ArenaOptions {
@@ -59,7 +63,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     briefing: opts.briefings?.[m.id],
   })))
 
-  const entries: ArenaEntry[] = []
+  const rawEntries: ArenaEntry[] = []
   const forfeits: ForfeitRecord[] = []
   const usage: ArenaOutcome['usage'] = { contestants: {}, judges: ZERO }
 
@@ -67,7 +71,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     const model = opts.contestants[i]!.id
     if (s.status === 'fulfilled') {
       usage.contestants[model] = s.value.stats
-      entries.push({
+      rawEntries.push({
         model,
         result: s.value.result,
         changes: validateChanges(opts.sandbox, s.value.result.changes),
@@ -82,8 +86,42 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     }
   })
 
+  const verify: Record<string, VerifyResult> = {}
+  const verifyRevisionUsed: Record<string, boolean> = {}
+  const verifyInitialFailures: Record<string, string[]> = {}
+  const entries: ArenaEntry[] = []
+  await Promise.all(rawEntries.map(async (raw) => {
+    if (!raw.changes.every((c) => c.valid)) {
+      entries.push(raw)
+      return
+    }
+    let result = await verifyChanges(opts.sandbox, raw.changes, opts.config.verifyTimeoutMs)
+    let current = raw
+    if (result.status === 'failed') {
+      verifyRevisionUsed[raw.model] = true
+      verifyInitialFailures[raw.model] = result.checks.filter((c) => c.exitCode !== 0).map((c) => c.name)
+      current = await revise(opts, raw, verifyFailureMessages(result))
+      result = current.changes.every((c) => c.valid)
+        ? await verifyChanges(opts.sandbox, current.changes, opts.config.verifyTimeoutMs)
+        : { status: 'skipped', checks: [] }
+    }
+    verify[raw.model] = result
+    usage.contestants[raw.model] = current.stats
+    if (result.status === 'failed') {
+      forfeits.push({
+        model: raw.model,
+        kind: 'loss',
+        reason: `failed verification: ${verifyFailureMessages(result).join('; ')}`,
+      })
+      return
+    }
+    entries.push(current)
+  }))
+
   if (entries.length === 0) throw new ArenaAbortError(forfeits)
-  if (entries.length === 1) return singleSurvivor(opts, entries[0]!, forfeits, usage)
+  if (entries.length === 1) {
+    return singleSurvivor(opts, entries[0]!, forfeits, usage, verify, verifyRevisionUsed, verifyInitialFailures)
+  }
 
   const anon = anonymizeEntries(entries, opts.runId, opts.scrubNames)
   const panel = await runJudgePanel(opts.client, opts.judgePool.map((j) => j.id), opts.task, anon)
@@ -99,6 +137,9 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     revised = true
     winner = await revise(opts, winner, panel.issues[winnerLabel] ?? [])
     usage.contestants[winner.model] = winner.stats
+    verify[winner.model] = winner.changes.every((c) => c.valid)
+      ? await verifyChanges(opts.sandbox, winner.changes, opts.config.verifyTimeoutMs)
+      : { status: 'skipped', checks: [] }
   }
 
   return {
@@ -110,6 +151,9 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     judgeIssues: Object.fromEntries([...modelOf.entries()].map(([label, m]) => [m, panel.issues[label] ?? []])),
     agreement: panel.agreement,
     usage,
+    verify,
+    verifyRevisionUsed,
+    verifyInitialFailures,
   }
 }
 
@@ -118,6 +162,9 @@ async function singleSurvivor(
   survivor: ArenaEntry,
   forfeits: ForfeitRecord[],
   usage: ArenaOutcome['usage'],
+  verify: Record<string, VerifyResult>,
+  verifyRevisionUsed: Record<string, boolean>,
+  verifyInitialFailures: Record<string, string[]>,
 ): Promise<ArenaOutcome> {
   const reviewer = opts.judgePool[0]!
   let entry = survivor
@@ -128,6 +175,7 @@ async function singleSurvivor(
     ...(critique.verdict === 'fail' ? critique.issues : []),
     ...invalidReasons(entry.changes),
   ]
+  let winnerVerdictPass = critique.verdict === 'pass'
   if (problems.length > 0) {
     revised = true
     entry = await revise(opts, entry, problems)
@@ -135,20 +183,28 @@ async function singleSurvivor(
     const second = await runCritique(opts.client, reviewer.id, opts.task, entry.result)
     critique = second.critique
     usage.judges = addStats(usage.judges, second.usage)
+    const reverify = entry.changes.every((c) => c.valid)
+      ? await verifyChanges(opts.sandbox, entry.changes, opts.config.verifyTimeoutMs)
+      : { status: 'skipped' as const, checks: [] }
+    verify[entry.model] = reverify
+    winnerVerdictPass = critique.verdict === 'pass' && reverify.status !== 'failed'
   }
   return {
     winner: entry,
-    winnerVerdictPass: critique.verdict === 'pass',
+    winnerVerdictPass,
     revised,
     ranking: buildRanking([entry.model], undefined, forfeits, 1),
     judges: [reviewer.id],
     judgeIssues: { [entry.model]: critique.issues },
     agreement: null,
     usage,
+    verify,
+    verifyRevisionUsed,
+    verifyInitialFailures,
   }
 }
 
-async function revise(opts: ArenaOptions, entry: ArenaEntry, issues: string[]): Promise<ArenaEntry> {
+export async function revise(opts: ArenaOptions, entry: ArenaEntry, issues: string[]): Promise<ArenaEntry> {
   const task = `${opts.task}\n\nYour previous attempt (summary: "${entry.result.summary}") `
     + `was rejected in review. Fix ALL of these issues and resubmit:\n`
     + issues.map((p) => `- ${p}`).join('\n')

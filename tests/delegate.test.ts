@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -64,6 +65,101 @@ const submit = (summary: string) => reply({
 })
 const pass = reply({ content: '{"verdict":"pass","issues":[]}' })
 const fail = reply({ content: '{"verdict":"fail","issues":["bug: off by one"]}' })
+
+describe('single mode — self-verification', () => {
+  function makeGitWorkspace(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dlg-verify-'))
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir })
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir })
+    fs.writeFileSync(path.join(dir, 'a.ts'), 'export const a = 1\n')
+    return dir
+  }
+
+  function commitAll(dir: string, message: string): void {
+    execFileSync('git', ['add', '.'], { cwd: dir })
+    execFileSync('git', ['commit', '-q', '-m', message], { cwd: dir })
+  }
+
+  it('passes verification and reports status ok when the configured check succeeds', async () => {
+    const gitWorkspace = makeGitWorkspace()
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"ok": "exit 0"}')
+    commitAll(gitWorkspace, 'init')
+    const client = {
+      chat: (() => {
+        const queue = [submit('done'), reply({ content: '{"verdict":"pass","issues":[]}' })]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.status).toBe('ok')
+    expect(result.verify.status).toBe('passed')
+  })
+
+  it('feeds a failing check back to the worker for one revision, then succeeds', async () => {
+    const gitWorkspace = makeGitWorkspace()
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"check": "test -f fixed.txt"}')
+    commitAll(gitWorkspace, 'init')
+    const submitWithFix = reply({
+      toolCalls: [{
+        id: 's2',
+        name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: 'fixed', rationale: 'r',
+          changes: [{ path: 'fixed.txt', type: 'full', content: 'x' }],
+        }),
+      }],
+    })
+    const client = {
+      chat: (() => {
+        const queue = [submit('first try'), submitWithFix, reply({ content: '{"verdict":"pass","issues":[]}' })]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.status).toBe('ok')
+    expect(result.revised).toBe(true)
+    expect(result.verify.status).toBe('passed')
+  })
+
+  it('marks failed_review when verification still fails after the one revision attempt', async () => {
+    const gitWorkspace = makeGitWorkspace()
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"check": "exit 1"}')
+    commitAll(gitWorkspace, 'init')
+    const client = {
+      chat: (() => {
+        const queue = [submit('first try'), submit('second try')]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.status).toBe('failed_review')
+    expect(result.verify.status).toBe('failed')
+  })
+
+  it('skips verification for a non-git workspace, matching pre-existing behavior', async () => {
+    const client = {
+      chat: (() => {
+        const queue = [submit('done'), reply({ content: '{"verdict":"pass","issues":[]}' })]
+        return async () => queue.shift()!
+      })(),
+    }
+    const result = await delegate(
+      { config: cfg, catalog, statePath, client, launchDir: workspace },
+      { task: 'do it', workspace, taskProfile: ['code-gen'], model: 'w/coder' },
+    )
+    expect(result.verify.status).toBe('skipped')
+  })
+})
 
 function scripted(replies: ChatResult[]) {
   let i = 0
@@ -307,5 +403,71 @@ describe('delegate', () => {
     const lines = fs.readFileSync(path.join(workspace, '.runs', day), 'utf8').trim().split('\n')
     expect(JSON.parse(lines[0]!)).toMatchObject({ kind: 'tournament', status: 'aborted' })
     expect(loadState(statePath, catalog).models['w/coder']?.availabilityStrikes).toBe(1)
+  })
+
+  it('tournament mode: records a learning note for a contestant that needed a verify-revision', async () => {
+    // Only two code-gen-eligible workers in this catalog (unlike the shared `catalog` fixture,
+    // which also has w/coder3 and would force a 3-contestant tournament requiring a third
+    // scripted worker queue). Near-tied elo keeps this on the tournament path, not single.
+    const twoWorkerCatalog: Registry = {
+      version: 1,
+      models: [
+        { id: 'w/coder', name: 'W', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'w/coder2', name: 'W2', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'r/rev', name: 'R', tags: ['review'], contextWindow: 1, toolCalling: 'none', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    const gitWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dlg-tverify-'))
+    execFileSync('git', ['init', '-q'], { cwd: gitWorkspace })
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: gitWorkspace })
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: gitWorkspace })
+    fs.writeFileSync(path.join(gitWorkspace, 'a.ts'), 'export const a = 1\n')
+    // Fails until a "fixed.txt" file shows up in a contestant's changes, forcing exactly
+    // one verify-revision round-trip per contestant (mirrors the single-mode fixture above).
+    fs.writeFileSync(path.join(gitWorkspace, 'elodrome.verify.json'), '{"check": "test -f fixed.txt"}')
+    execFileSync('git', ['add', '.'], { cwd: gitWorkspace })
+    execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: gitWorkspace })
+
+    plantState(statePath, {
+      'w/coder': { elo: 1000, matches: 9 },
+      'w/coder2': { elo: 995, matches: 9 },
+    })
+
+    const submitFix = (label: string) => reply({
+      toolCalls: [{
+        id: 's', name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: label, rationale: 'r',
+          changes: [{ path: 'fixed.txt', type: 'full', content: 'x' }],
+        }),
+      }],
+    })
+
+    const client = routedByModel({
+      'w/coder': [submit('a1'), submitFix('a2')],
+      'w/coder2': [submit('b1'), submitFix('b2')],
+      'r/rev': [verdictOfLabels],
+    })
+
+    await delegate(
+      { config: cfg, catalog: twoWorkerCatalog, statePath, client, launchDir: gitWorkspace },
+      { task: 'do it', workspace: gitWorkspace, taskProfile: ['code-gen'] },
+    )
+
+    const state = loadState(statePath, twoWorkerCatalog)
+    const learnings = state.models['w/coder']?.learnings ?? []
+    const coder2Learnings = state.models['w/coder2']?.learnings ?? []
+    const allNotes = [...learnings, ...coder2Learnings].map((l) => l.note)
+    const revisionNotes = allNotes.filter((n) => n.includes('verify-revision'))
+    // Both contestants self-corrected on their one revision attempt (the intended "good"
+    // outcome of this feature) — by the time the learning note is written, outcome.verify[m]
+    // holds the PASSING result, so the note must be built from the pre-revision failure
+    // snapshot (verifyInitialFailures), not the final verify result, or it reads as an
+    // empty, content-free "Needed a verify-revision () before passing."
+    expect(revisionNotes.length).toBeGreaterThan(0)
+    for (const note of revisionNotes) {
+      expect(note).toContain('(check)')
+      expect(note).not.toContain('()')
+    }
   })
 })

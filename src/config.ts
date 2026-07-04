@@ -8,6 +8,7 @@ export interface Config {
   requestsPerMinute: number
   maxWorkerRequests: number
   workerTimeoutMs: number
+  verifyTimeoutMs: number
 }
 
 function positiveNumber(name: string, raw: string | undefined, fallback: number): number {
@@ -33,5 +34,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     requestsPerMinute: positiveNumber('ELODROME_RPM', env.ELODROME_RPM, 30),
     maxWorkerRequests: positiveNumber('ELODROME_MAX_WORKER_REQUESTS', env.ELODROME_MAX_WORKER_REQUESTS, 25),
     workerTimeoutMs: positiveNumber('ELODROME_WORKER_TIMEOUT_MS', env.ELODROME_WORKER_TIMEOUT_MS, 300_000),
+    verifyTimeoutMs: positiveNumber('ELODROME_VERIFY_TIMEOUT_MS', env.ELODROME_VERIFY_TIMEOUT_MS, 180_000),
   }
 }
