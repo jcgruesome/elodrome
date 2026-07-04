@@ -108,6 +108,26 @@ describe('mcp server', () => {
     expect(state.models['w/coder']?.outcomes.accepted).toBe(1)
   })
 
+  it('accepts an explicit min_contestants argument', async () => {
+    const mcp = await connect([submit, pass])
+    const res = await mcp.callTool({
+      name: 'delegate',
+      arguments: { task: 't', workspace, task_profile: ['code-gen'], min_contestants: 4 },
+    })
+    const parsed = JSON.parse(textOf(res)) as { status: string }
+    expect(parsed.status).toBe('ok')
+  })
+
+  it('rejects a min_contestants below 2', async () => {
+    const mcp = await connect([])
+    const res = await mcp.callTool({
+      name: 'delegate',
+      arguments: { task: 't', workspace, task_profile: ['code-gen'], min_contestants: 1 },
+    })
+    expect((res as { isError?: boolean }).isError).toBe(true)
+    expect(textOf(res)).toMatch(/min_contestants/)
+  })
+
   it('consult does a single chat with no tools', async () => {
     const mcp = await connect([reply({ content: 'second opinion' })])
     const res = await mcp.callTool({ name: 'consult', arguments: { model: 'r/rev', prompt: 'p' } })

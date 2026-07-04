@@ -173,6 +173,103 @@ describe('runArena', () => {
   })
 })
 
+describe('backfill', () => {
+  it('pulls a replacement from the pool when a contestant forfeits, to reach minSuccessful', async () => {
+    const client = routedClient({
+      'w/x': [new NimError('down', 503)],
+      'w/y': [submit('from y')],
+      'w/z': [submit('from z')],
+      'j/1': [verdictFor(['A', 'B'])],
+    })
+    const out = await runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')], judgePool: [model('j/1', ['review'])],
+      scrubNames: [], backfillPool: [model('w/z')], minSuccessful: 2,
+    })
+    expect(out.ranking.filter((r) => r.forfeit === undefined)).toHaveLength(2)
+    expect(out.ranking.find((r) => r.model === 'w/z')?.forfeit).toBeUndefined()
+    expect(out.ranking.find((r) => r.model === 'w/x')?.forfeit).toBe('no_contest')
+    expect(out.usage.contestants['w/z']).toBeDefined()
+  })
+
+  it('does not draw from the pool once minSuccessful is already met', async () => {
+    const client = routedClient({
+      'w/x': [submit('from x')],
+      'w/y': [submit('from y')],
+      'j/1': [verdictFor(['A', 'B'])],
+    })
+    const out = await runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')], judgePool: [model('j/1', ['review'])],
+      scrubNames: [], backfillPool: [model('w/z')], minSuccessful: 2,
+    })
+    expect(out.ranking).toHaveLength(2)
+    expect(out.ranking.some((r) => r.model === 'w/z')).toBe(false)
+  })
+
+  it('proceeds with fewer than minSuccessful once the backfill pool is exhausted', async () => {
+    const client = routedClient({
+      'w/x': [new NimError('down', 503)],
+      'w/y': [submit('from y')],
+      'w/z': [new NimError('down', 503)],
+      'j/1': [reply({ content: '{"verdict":"pass","issues":[]}' })],
+    })
+    const out = await runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')], judgePool: [model('j/1', ['review'])],
+      scrubNames: [], backfillPool: [model('w/z')], minSuccessful: 3,
+    })
+    expect(out.winner.model).toBe('w/y')
+    expect(out.ranking.filter((r) => r.forfeit === 'no_contest')).toHaveLength(2)
+  })
+
+  it('still throws ArenaAbortError, with every attempted model, once the pool is exhausted with zero successes', async () => {
+    const client = routedClient({
+      'w/x': [new NimError('down x', 503)],
+      'w/y': [new NimError('down y', 503)],
+      'w/z': [new NimError('down z', 503)],
+    })
+    await expect(runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')], judgePool: [model('j/1', ['review'])],
+      scrubNames: [], backfillPool: [model('w/z')], minSuccessful: 3,
+    })).rejects.toMatchObject({ forfeits: expect.arrayContaining([
+      expect.objectContaining({ model: 'w/x' }),
+      expect.objectContaining({ model: 'w/y' }),
+      expect.objectContaining({ model: 'w/z' }),
+    ]) })
+  })
+
+  it('defaults minSuccessful to the initial contestant count when unset, still backfilling a forfeit', async () => {
+    const client = routedClient({
+      'w/x': [new NimError('down', 503)],
+      'w/y': [submit('from y')],
+      'w/z': [submit('from z')],
+      'j/1': [verdictFor(['A', 'B'])],
+    })
+    const out = await runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')], judgePool: [model('j/1', ['review'])],
+      scrubNames: [], backfillPool: [model('w/z')],
+    })
+    expect(out.ranking.find((r) => r.model === 'w/z')?.forfeit).toBeUndefined()
+  })
+
+  it('never draws from an empty pool (default with no backfillPool option)', async () => {
+    const client = routedClient({
+      'w/x': [new NimError('down', 503)],
+      'w/y': [submit('from y')],
+      'j/1': [reply({ content: '{"verdict":"pass","issues":[]}' })],
+    })
+    const out = await runArena({
+      client, config: cfg, sandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/x'), model('w/y')], judgePool: [model('j/1', ['review'])],
+      scrubNames: [],
+    })
+    expect(out.winner.model).toBe('w/y')
+  })
+})
+
 describe('self-verification', () => {
   function makeGitSandbox(): Sandbox {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-verify-'))

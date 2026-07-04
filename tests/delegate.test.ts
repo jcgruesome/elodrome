@@ -355,6 +355,67 @@ describe('delegate', () => {
     expect(res.arena?.eloDeltas['w/coder2']).toBe(0)
   })
 
+  it('backfills a no-contest forfeit from the eligible pool to reach minContestants', async () => {
+    const fourModelCatalog: Registry = {
+      version: 1,
+      models: [
+        ...catalog.models,
+        { id: 'w/coder4', name: 'W4', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    plantState(statePath, {
+      'w/coder': { elo: 1010, matches: 9 },
+      'w/coder2': { elo: 1000, matches: 9 },
+      'w/coder3': { elo: 990, matches: 0 },
+      'w/coder4': { elo: 980, matches: 5 },
+    })
+    const client = routedByModel({
+      'w/coder': [submit('c1')],
+      'w/coder2': [new NimError('degraded', 503)],
+      'w/coder3': [submit('c3')],
+      'w/coder4': [submit('c4')],
+      'r/rev': [verdictOfLabels],
+    })
+    const res = await delegate(
+      { config: cfg, catalog: fourModelCatalog, statePath, client, launchDir: workspace },
+      { task: 't', workspace, taskProfile: ['code-gen'] },
+    )
+    expect(res.mode).toBe('tournament')
+    expect(res.arena?.contestants.sort()).toEqual(['w/coder', 'w/coder2', 'w/coder3', 'w/coder4'])
+    const backfilled = res.arena?.ranking.find((r) => r.model === 'w/coder4')
+    expect(backfilled?.forfeit).toBeUndefined()
+    const forfeited = res.arena?.ranking.find((r) => r.model === 'w/coder2')
+    expect(forfeited?.forfeit).toBe('no_contest')
+    expect(res.statsBreakdown.contestants?.['w/coder4']).toBeDefined()
+  })
+
+  it('honors an explicit minContestants request, backfilling beyond the default of 3', async () => {
+    const fiveModelCatalog: Registry = {
+      version: 1,
+      models: [
+        ...catalog.models,
+        { id: 'w/coder4', name: 'W4', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'w/coder5', name: 'W5', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    plantState(statePath, {
+      'w/coder': { elo: 1010, matches: 9 }, 'w/coder2': { elo: 1000, matches: 9 },
+      'w/coder3': { elo: 990, matches: 0 }, 'w/coder4': { elo: 980, matches: 0 }, 'w/coder5': { elo: 970, matches: 0 },
+    })
+    const client = routedByModel({
+      'w/coder': [submit('c1')], 'w/coder2': [submit('c2')],
+      'w/coder3': [submit('c3')], 'w/coder4': [submit('c4')],
+      'r/rev': [verdictOfLabels],
+    })
+    const res = await delegate(
+      { config: cfg, catalog: fiveModelCatalog, statePath, client, launchDir: workspace },
+      { task: 't', workspace, taskProfile: ['code-gen'], minContestants: 4 },
+    )
+    expect(res.mode).toBe('tournament')
+    expect(res.arena?.contestants).toHaveLength(4)
+    expect(res.arena?.contestants).not.toContain('w/coder5')
+  })
+
   it('injects the worker model learnings as briefing in single mode', async () => {
     // Model names here are longer than in the shared `catalog` fixture: buildBriefing
     // scrubs every catalog id/name from the note, and single-letter names like 'W' or

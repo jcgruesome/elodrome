@@ -97,6 +97,19 @@ describe('elodrome cli', () => {
     expect(parsed.status).toBe('ok')
   })
 
+  it('run rejects an invalid --min-contestants', async () => {
+    const { workspace, registryPath, statePath, cfg } = setup()
+    const cli = buildCli({
+      config: cfg, registryPath, statePath, launchDir: workspace,
+      client: { chat: async () => { throw new Error('unused') } },
+      print: () => {},
+    })
+    await expect(cli.parseAsync([
+      'node', 'elodrome', 'run', '--task', 't', '--workspace', workspace,
+      '--profile', 'code-gen', '--min-contestants', '1',
+    ])).rejects.toThrow(/--min-contestants/)
+  })
+
   it('leaderboard prints ranked models', async () => {
     const { workspace, registryPath, cfg, statePath } = setup()
     const out: string[] = []

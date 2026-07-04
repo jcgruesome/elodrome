@@ -4,10 +4,13 @@ import { getRating, type NvState } from '../registry/state'
 
 export const GATE_MIN_MATCHES = 5
 export const GATE_MIN_LEAD = 100
+export const DEFAULT_MIN_CONTESTANTS = 3
 
 export type GateDecision =
   | { mode: 'single'; model: ModelEntry }
-  | { mode: 'tournament'; contestants: ModelEntry[] }
+  // `pool` holds the remaining eligible models, in priority order, that were not picked as
+  // initial contestants. The arena draws from it to backfill any contestant that forfeits.
+  | { mode: 'tournament'; contestants: ModelEntry[]; pool: ModelEntry[] }
 
 export function eligibleModels(catalog: Registry, profile: CapabilityTag[]): ModelEntry[] {
   return catalog.models.filter(
@@ -20,9 +23,17 @@ function byEloDesc(state: NvState, tag: string) {
     getRating(state, b.id, tag).elo - getRating(state, a.id, tag).elo || a.id.localeCompare(b.id)
 }
 
-export function decide(catalog: Registry, state: NvState, profile: CapabilityTag[]): GateDecision {
+export function decide(
+  catalog: Registry,
+  state: NvState,
+  profile: CapabilityTag[],
+  minContestants: number = DEFAULT_MIN_CONTESTANTS,
+): GateDecision {
   if (profile.length === 0) {
     throw new Error('task_profile must contain at least one capability tag for arena routing')
+  }
+  if (!Number.isInteger(minContestants) || minContestants < 2) {
+    throw new Error(`minContestants must be an integer >= 2, got ${minContestants}`)
   }
   const primary = profile[0]!
   const eligible = [...eligibleModels(catalog, profile)].sort(byEloDesc(state, primary))
@@ -38,14 +49,20 @@ export function decide(catalog: Registry, state: NvState, profile: CapabilityTag
   if (champion.matches >= GATE_MIN_MATCHES && champion.elo - runnerUp.elo >= GATE_MIN_LEAD) {
     return { mode: 'single', model: eligible[0]! }
   }
-  const rest = eligible.slice(2)
+  const targetCount = Math.min(minContestants, eligible.length)
+  if (targetCount <= 2) {
+    return { mode: 'tournament', contestants: eligible.slice(0, targetCount), pool: eligible.slice(targetCount) }
+  }
+  const top = eligible.slice(0, targetCount - 1)
+  const rest = eligible.slice(targetCount - 1)
   const explorer = [...rest].sort(
     (a, b) => getRating(state, a.id, primary).matches - getRating(state, b.id, primary).matches
       || a.id.localeCompare(b.id),
-  )[0]
+  )[0]!
   return {
     mode: 'tournament',
-    contestants: explorer ? [eligible[0]!, eligible[1]!, explorer] : [eligible[0]!, eligible[1]!],
+    contestants: [...top, explorer],
+    pool: rest.filter((m) => m.id !== explorer.id),
   }
 }
 

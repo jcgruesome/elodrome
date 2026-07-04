@@ -40,12 +40,20 @@ export function buildCli(deps: CliDeps): Command {
     .requiredOption('--workspace <dir>')
     .option('--profile <tags>', 'comma-separated capability tags', 'code-gen')
     .option('--model <id>')
-    .action(async (opts: { task: string; workspace: string; profile: string; model?: string }) => {
+    .option('--min-contestants <n>', 'minimum successful contestants per bout; backfills forfeits from the eligible pool')
+    .action(async (opts: { task: string; workspace: string; profile: string; model?: string; minContestants?: string }) => {
       const catalog = loadRegistry(deps.registryPath)
       const taskProfile = opts.profile.split(',').map((t) => capabilityTagSchema.parse(t.trim())) as CapabilityTag[]
+      let minContestants: number | undefined
+      if (opts.minContestants !== undefined) {
+        minContestants = Number(opts.minContestants)
+        if (!Number.isInteger(minContestants) || minContestants < 2) {
+          throw new Error(`--min-contestants must be an integer >= 2, got "${opts.minContestants}"`)
+        }
+      }
       const res = await delegate(
         { config: deps.config, catalog, statePath: deps.statePath, client: deps.client, launchDir: deps.launchDir },
-        { task: opts.task, workspace: path.resolve(opts.workspace), taskProfile, model: opts.model },
+        { task: opts.task, workspace: path.resolve(opts.workspace), taskProfile, model: opts.model, minContestants },
       )
       print(JSON.stringify(res, null, 2))
     })

@@ -92,7 +92,7 @@ cp .mcp.json.example .mcp.json
 
 ```bash
 pnpm elodrome models                                                                 # list registry models + win rates
-pnpm elodrome run --task "..." --workspace $PWD --profile code-gen,fast [--model id] # delegate via full pipeline
+pnpm elodrome run --task "..." --workspace $PWD --profile code-gen,fast [--model id] [--min-contestants n] # delegate via full pipeline
 pnpm elodrome eval --suite evals/coding-basic.yaml --workspace $PWD --model id       # run an eval suite against a model
 pnpm elodrome leaderboard [--tag code-gen] [--md]                                    # per-tag Elo rankings
 pnpm elodrome board --out board.html [--days 7]                                      # write an HTML Arena match board
@@ -108,16 +108,25 @@ Tournament is the default delegation path; the confidence gate (`decide` in
 `src/arena/select.ts`) routes single-mode only when a dominant champion exists for the
 primary tag (≥5 matches and ≥100 Elo lead over the runner-up), earning back
 single-model speed with no contest overhead. Otherwise the arena selects the top-2
-primary-tag Elo models plus one least-tested explorer (3 contestants, scaled to 2 if the
-catalog is thin) and runs their worker loops in parallel against one shared read-only
-sandbox. Entries are anonymized via a stable shuffle to labels A/B/C with model names
-scrubbed from entry text, then a two-judge panel of `review`-tag models (excluded from
-the contest) ranks and verdicts them blind; a rank-sum aggregate decides the winner, with
-the higher-Elo judge breaking ties. Forfeits are classified by cause: infra failures
+primary-tag Elo models plus one least-tested explorer (3 contestants by default, scaled
+down if the catalog is thin) and runs their worker loops in parallel against one shared
+read-only sandbox. Entries are anonymized via a stable shuffle to labels A/B/C with model
+names scrubbed from entry text, then a two-judge panel of `review`-tag models (excluded
+from the contest) ranks and verdicts them blind; a rank-sum aggregate decides the winner,
+with the higher-Elo judge breaking ties. Forfeits are classified by cause: infra failures
 (NIM 429/5xx/404) are no-contests excluded from judging and Elo but logged as an
 availability strike, while task failures (malformed submits, blown budget/timeout) count
-as last-place losses in every pairwise Elo result. Each tournament updates Elo per
-profile tag with K=32, so the leaderboard gets measurably better the more you delegate.
+as last-place losses in every pairwise Elo result.
+
+If a contestant forfeits, the arena round-robins to the next-ranked eligible model still
+sitting in the pool and keeps pulling replacements until it has enough successful,
+judgeable entries to satisfy `minContestants` (default 3) or the pool runs dry — so one
+flaky free-tier endpoint doesn't shrink a 3-way bout down to a 1v1, or abort it outright.
+Configure the default via `ELODROME_MIN_CONTESTANTS`, or override it per call with
+`--min-contestants <n>` (CLI) / `min_contestants` (MCP `delegate`).
+
+Each tournament updates Elo per profile tag with K=32, so the leaderboard gets measurably
+better the more you delegate.
 Inspect it with `pnpm elodrome leaderboard --md`, or render the match-level view with
 `pnpm elodrome board --out board.html`:
 

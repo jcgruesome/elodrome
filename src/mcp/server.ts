@@ -110,13 +110,15 @@ export function buildServer(deps: ServerDeps): McpServer {
       workspace: z.string().describe('Absolute path to the workspace dir (must be inside the project)'),
       task_profile: z.array(capabilityTagSchema).describe('Capability tags for model selection, e.g. ["code-gen","fast"]'),
       model: z.string().optional().describe('Registry model id to force a specific worker'),
+      min_contestants: z.number().int().min(2).optional()
+        .describe('Minimum successful contestants per tournament bout; backfills forfeits from the eligible pool (default 3)'),
     },
   }, async (args) => {
     try {
       const catalog = loadRegistry(deps.registryPath)
       const res = await delegate(
         { config: deps.config, catalog, statePath: deps.statePath, client: deps.client, launchDir: deps.launchDir },
-        { task: args.task, workspace: args.workspace, taskProfile: args.task_profile, model: args.model },
+        { task: args.task, workspace: args.workspace, taskProfile: args.task_profile, model: args.model, minContestants: args.min_contestants },
       )
       runWorkers.set(res.runId, { model: res.workerModel, tags: res.taskProfile })
       return ok(formatToolResult(deps.config.runsDir, res.runId, res))

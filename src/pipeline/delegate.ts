@@ -17,6 +17,9 @@ export interface DelegateRequest {
   workspace: string
   taskProfile: CapabilityTag[]
   model?: string
+  /** Minimum successful (judgeable) contestants per tournament bout; backfills forfeits from
+   *  the eligible pool until this is met or the pool runs out. Defaults to config.minContestants. */
+  minContestants?: number
 }
 
 export interface DelegateDeps {
@@ -78,17 +81,21 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     return singleDelegate(deps, req, sandbox, runId, worker, reviewer, briefing)
   }
 
-  const decision = decide(deps.catalog, state, req.taskProfile)
+  const minContestants = req.minContestants ?? deps.config.minContestants
+  const decision = decide(deps.catalog, state, req.taskProfile, minContestants)
   if (decision.mode === 'single') {
     const reviewer = selectJudges(deps.catalog, state, [decision.model.id])[0]!
     const briefing = buildBriefing(state, decision.model.id, req.taskProfile, scrubNamesOf(deps.catalog))
     return singleDelegate(deps, req, sandbox, runId, decision.model, reviewer, briefing)
   }
 
-  const judges = selectJudges(deps.catalog, state, decision.contestants.map((c) => c.id))
+  // Judges and briefings are prepared for every model that could end up in the bout,
+  // including the backfill pool, since a forfeit can pull any of them in mid-run.
+  const allCandidates = [...decision.contestants, ...decision.pool]
+  const judges = selectJudges(deps.catalog, state, allCandidates.map((c) => c.id))
   const scrubNames = scrubNamesOf(deps.catalog)
   const briefings = Object.fromEntries(
-    decision.contestants.flatMap((c) => {
+    allCandidates.flatMap((c) => {
       const b = buildBriefing(state, c.id, req.taskProfile, scrubNames)
       return b ? [[c.id, b]] : []
     }),
@@ -98,12 +105,13 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     outcome = await runArena({
       client: deps.client, config: deps.config, sandbox, task: req.task, runId,
       contestants: decision.contestants, judgePool: judges, scrubNames, briefings,
+      backfillPool: decision.pool, minSuccessful: minContestants,
     })
   } catch (err) {
     if (err instanceof ArenaAbortError) {
       appendTrace(deps.config.runsDir, {
         kind: 'tournament', runId, status: 'aborted', taskProfile: req.taskProfile,
-        contestants: decision.contestants.map((c) => c.id), forfeits: err.forfeits,
+        contestants: err.forfeits.map((f) => f.model), forfeits: err.forfeits,
       })
       try {
         await withStateLock(deps.statePath, deps.catalog, (s) => ({
@@ -176,7 +184,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
   appendTrace(deps.config.runsDir, {
     kind: 'tournament', runId, status, taskProfile: req.taskProfile,
     workerModel: outcome.winner.model, judges: outcome.judges,
-    contestants: decision.contestants.map((c) => c.id),
+    contestants: outcome.ranking.map((r) => r.model),
     ranking: outcome.ranking, agreement: outcome.agreement, revised: outcome.revised,
     requests: stats.requests, promptTokens: stats.promptTokens, completionTokens: stats.completionTokens,
     worker: workerStats, reviewer: outcome.usage.judges,
@@ -198,7 +206,7 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
     statsBreakdown: { worker: workerStats, reviewer: outcome.usage.judges, contestants: outcome.usage.contestants },
     taskProfile: req.taskProfile,
     arena: {
-      contestants: decision.contestants.map((c) => c.id),
+      contestants: outcome.ranking.map((r) => r.model),
       ranking: outcome.ranking, judges: outcome.judges,
       judgeIssues: outcome.judgeIssues, agreement: outcome.agreement, eloDeltas,
       verify: outcome.verify,

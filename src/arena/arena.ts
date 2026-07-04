@@ -48,75 +48,90 @@ export interface ArenaOptions {
   judgePool: ModelEntry[]
   scrubNames: string[]
   briefings?: Record<string, string>
+  /** Remaining eligible models, in priority order, to draw from if a contestant forfeits. */
+  backfillPool?: ModelEntry[]
+  /** Keep pulling from backfillPool until this many contestants produce a judgeable entry. */
+  minSuccessful?: number
 }
 
 const ZERO: WorkerStats = { requests: 0, promptTokens: 0, completionTokens: 0 }
 
 export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
-  const settled = await Promise.allSettled(opts.contestants.map((m) => runWorkerLoop({
-    client: opts.client,
-    model: m.id,
-    task: opts.task,
-    sandbox: opts.sandbox,
-    maxRequests: opts.config.maxWorkerRequests,
-    timeoutMs: opts.config.workerTimeoutMs,
-    briefing: opts.briefings?.[m.id],
-  })))
-
-  const rawEntries: ArenaEntry[] = []
+  const entries: ArenaEntry[] = []
   const forfeits: ForfeitRecord[] = []
   const usage: ArenaOutcome['usage'] = { contestants: {}, judges: ZERO }
-
-  settled.forEach((s, i) => {
-    const model = opts.contestants[i]!.id
-    if (s.status === 'fulfilled') {
-      usage.contestants[model] = s.value.stats
-      rawEntries.push({
-        model,
-        result: s.value.result,
-        changes: validateChanges(opts.sandbox, s.value.result.changes),
-        stats: s.value.stats,
-      })
-    } else if (s.reason instanceof NimError) {
-      forfeits.push({ model, kind: 'no_contest', reason: s.reason.message })
-    } else if (s.reason instanceof WorkerError) {
-      forfeits.push({ model, kind: 'loss', reason: s.reason.message })
-    } else {
-      throw s.reason
-    }
-  })
-
   const verify: Record<string, VerifyResult> = {}
   const verifyRevisionUsed: Record<string, boolean> = {}
   const verifyInitialFailures: Record<string, string[]> = {}
-  const entries: ArenaEntry[] = []
-  await Promise.all(rawEntries.map(async (raw) => {
-    if (!raw.changes.every((c) => c.valid)) {
-      entries.push(raw)
-      return
-    }
-    let result = await verifyChanges(opts.sandbox, raw.changes, opts.config.verifyTimeoutMs)
-    let current = raw
-    if (result.status === 'failed') {
-      verifyRevisionUsed[raw.model] = true
-      verifyInitialFailures[raw.model] = result.checks.filter((c) => c.exitCode !== 0).map((c) => c.name)
-      current = await revise(opts, raw, verifyFailureMessages(result))
-      result = current.changes.every((c) => c.valid)
-        ? await verifyChanges(opts.sandbox, current.changes, opts.config.verifyTimeoutMs)
-        : { status: 'skipped', checks: [] }
-    }
-    verify[raw.model] = result
-    usage.contestants[raw.model] = current.stats
-    if (result.status === 'failed') {
-      forfeits.push({
-        model: raw.model,
-        kind: 'loss',
-        reason: `failed verification: ${verifyFailureMessages(result).join('; ')}`,
-      })
-      return
-    }
-    entries.push(current)
-  }))
+
+  async function runBatch(models: ModelEntry[]): Promise<void> {
+    const settled = await Promise.allSettled(models.map((m) => runWorkerLoop({
+      client: opts.client,
+      model: m.id,
+      task: opts.task,
+      sandbox: opts.sandbox,
+      maxRequests: opts.config.maxWorkerRequests,
+      timeoutMs: opts.config.workerTimeoutMs,
+      briefing: opts.briefings?.[m.id],
+    })))
+
+    const rawEntries: ArenaEntry[] = []
+    settled.forEach((s, i) => {
+      const model = models[i]!.id
+      if (s.status === 'fulfilled') {
+        usage.contestants[model] = s.value.stats
+        rawEntries.push({
+          model,
+          result: s.value.result,
+          changes: validateChanges(opts.sandbox, s.value.result.changes),
+          stats: s.value.stats,
+        })
+      } else if (s.reason instanceof NimError) {
+        forfeits.push({ model, kind: 'no_contest', reason: s.reason.message })
+      } else if (s.reason instanceof WorkerError) {
+        forfeits.push({ model, kind: 'loss', reason: s.reason.message })
+      } else {
+        throw s.reason
+      }
+    })
+
+    await Promise.all(rawEntries.map(async (raw) => {
+      if (!raw.changes.every((c) => c.valid)) {
+        entries.push(raw)
+        return
+      }
+      let result = await verifyChanges(opts.sandbox, raw.changes, opts.config.verifyTimeoutMs)
+      let current = raw
+      if (result.status === 'failed') {
+        verifyRevisionUsed[raw.model] = true
+        verifyInitialFailures[raw.model] = result.checks.filter((c) => c.exitCode !== 0).map((c) => c.name)
+        current = await revise(opts, raw, verifyFailureMessages(result))
+        result = current.changes.every((c) => c.valid)
+          ? await verifyChanges(opts.sandbox, current.changes, opts.config.verifyTimeoutMs)
+          : { status: 'skipped', checks: [] }
+      }
+      verify[raw.model] = result
+      usage.contestants[raw.model] = current.stats
+      if (result.status === 'failed') {
+        forfeits.push({
+          model: raw.model,
+          kind: 'loss',
+          reason: `failed verification: ${verifyFailureMessages(result).join('; ')}`,
+        })
+        return
+      }
+      entries.push(current)
+    }))
+  }
+
+  const pool = [...(opts.backfillPool ?? [])]
+  const minSuccessful = opts.minSuccessful ?? opts.contestants.length
+  let nextBatch = opts.contestants
+  while (true) {
+    await runBatch(nextBatch)
+    if (entries.length >= minSuccessful || pool.length === 0) break
+    nextBatch = pool.splice(0, minSuccessful - entries.length)
+  }
 
   if (entries.length === 0) throw new ArenaAbortError(forfeits)
   if (entries.length === 1) {

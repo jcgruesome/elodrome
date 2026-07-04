@@ -66,6 +66,69 @@ describe('selection', () => {
     expect(() => decide(catalog, state, ['research'])).toThrow(/eligible/i)
   })
 
+  it('picks a top-2 tournament with an empty pool when the catalog is thinner than minContestants', () => {
+    const state = stateWith({ 'a/one': { elo: 1100, matches: 9 }, 'b/two': { elo: 1050, matches: 9 } })
+    const thinCatalog: Registry = { version: 1, models: catalog.models.filter((m) => m.id !== 'c/three') }
+    const d = decide(thinCatalog, state, ['code-gen'], 3)
+    expect(d.mode).toBe('tournament')
+    if (d.mode === 'tournament') {
+      expect(d.contestants.map((c) => c.id)).toEqual(['a/one', 'b/two'])
+      expect(d.pool).toEqual([])
+    }
+  })
+
+  it('exposes the remaining eligible models as pool, in priority order, beyond minContestants', () => {
+    const bigCatalog: Registry = {
+      version: 1,
+      models: [
+        ...catalog.models,
+        { id: 'f/four', name: 'Four', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+        { id: 'g/five', name: 'Five', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    const state = stateWith({
+      'a/one': { elo: 1100, matches: 9 },
+      'b/two': { elo: 1050, matches: 9 },
+      'c/three': { elo: 1000, matches: 9 },
+      'f/four': { elo: 950, matches: 9 },
+      'g/five': { elo: 900, matches: 9 },
+    })
+    const d = decide(bigCatalog, state, ['code-gen'], 3)
+    expect(d.mode).toBe('tournament')
+    if (d.mode === 'tournament') {
+      // top-2 by elo (a/one, b/two) + least-tested explorer among the rest (all tied at 9
+      // matches here, so alphabetical: c/three) — matching the pre-backfill selection rule.
+      expect(d.contestants.map((c) => c.id)).toEqual(['a/one', 'b/two', 'c/three'])
+      expect(d.pool.map((c) => c.id)).toEqual(['f/four', 'g/five'])
+    }
+  })
+
+  it('honors a larger minContestants, reserving whatever remains as pool', () => {
+    const bigCatalog: Registry = {
+      version: 1,
+      models: [
+        ...catalog.models,
+        { id: 'f/four', name: 'Four', tags: ['code-gen'], contextWindow: 1, toolCalling: 'reliable', outcomes: { accepted: 0, reworked: 0, rejected: 0 } },
+      ],
+    }
+    const state = stateWith({
+      'a/one': { elo: 1100, matches: 9 }, 'b/two': { elo: 1050, matches: 9 },
+      'c/three': { elo: 1000, matches: 0 }, 'f/four': { elo: 950, matches: 0 },
+    })
+    const d = decide(bigCatalog, state, ['code-gen'], 4)
+    expect(d.mode).toBe('tournament')
+    if (d.mode === 'tournament') {
+      expect(d.contestants.map((c) => c.id).sort()).toEqual(['a/one', 'b/two', 'c/three', 'f/four'])
+      expect(d.pool).toEqual([])
+    }
+  })
+
+  it('rejects a minContestants below 2', () => {
+    const state = stateWith({ 'a/one': { elo: 1000, matches: 0 }, 'b/two': { elo: 1000, matches: 0 } })
+    expect(() => decide(catalog, state, ['code-gen'], 1)).toThrow(/minContestants/)
+    expect(() => decide(catalog, state, ['code-gen'], 1.5)).toThrow(/minContestants/)
+  })
+
   it('selects judges by review elo excluding contestants, throws when none', () => {
     const state = stateWith({ 'd/judge': { elo: 1000, matches: 0 } })
     expect(selectJudges(catalog, state, ['a/one']).map((j) => j.id)).toEqual(['d/judge'])
