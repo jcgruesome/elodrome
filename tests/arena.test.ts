@@ -260,4 +260,73 @@ describe('self-verification', () => {
     expect(outcome.verify['w/a']!.status).toBe('skipped')
     expect(outcome.verify['w/b']!.status).toBe('skipped')
   })
+
+  it('re-verifies a judge-revised tournament winner and fails it when the revision breaks verification', async () => {
+    const gitSandbox = makeGitSandbox()
+    fs.writeFileSync(path.join(gitSandbox.root, 'elodrome.verify.json'), '{"check": "! test -f bad.txt"}')
+    commitAll(gitSandbox.root, 'init')
+
+    // First submission from either contestant is safe (doesn't touch bad.txt) so both clear
+    // the pre-judge verify step and reach the judge panel. Whichever one the judge picks as
+    // winner and fails will be revised; that revision introduces bad.txt, which must be
+    // caught by a *post*-revision re-verify rather than reusing the stale pre-revision result.
+    const safeSubmit = (summary: string) => submit(summary)
+    const badSubmit = reply({
+      toolCalls: [{
+        id: 'bad', name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: 'revised but broken', rationale: 'r',
+          changes: [{ path: 'bad.txt', type: 'full', content: 'x' }],
+        }),
+      }],
+    })
+    const client = routedClient({
+      'w/a': [safeSubmit('v1'), badSubmit],
+      'w/b': [safeSubmit('other'), badSubmit],
+      'j/1': [verdictFor(['A', 'B'], 'A')],
+      'j/2': [verdictFor(['A', 'B'], 'A')],
+    })
+    const outcome = await runArena({
+      client, config: { ...cfg, verifyTimeoutMs: 5_000 }, sandbox: gitSandbox, task: 't', runId: 'run_fixed',
+      contestants: [model('w/a'), model('w/b')], judgePool: [model('j/1', ['review']), model('j/2', ['review'])],
+      scrubNames: [],
+    })
+
+    expect(outcome.revised).toBe(true)
+    expect(outcome.winnerVerdictPass).toBe(false)
+    expect(outcome.verify[outcome.winner.model]!.status).toBe('failed')
+  })
+
+  it('re-verifies a critique-revised single survivor and overrides a passing verdict when the revision breaks verification', async () => {
+    const gitSandbox = makeGitSandbox()
+    fs.writeFileSync(path.join(gitSandbox.root, 'elodrome.verify.json'), '{"check": "! test -f bad.txt"}')
+    commitAll(gitSandbox.root, 'init')
+
+    const critiqueFail = reply({ content: '{"verdict":"fail","issues":["fix x"]}' })
+    const critiquePass = reply({ content: '{"verdict":"pass","issues":[]}' })
+    const badSubmit = reply({
+      toolCalls: [{
+        id: 'bad', name: 'submit_result',
+        arguments: JSON.stringify({
+          summary: 'revised but broken', rationale: 'r',
+          changes: [{ path: 'bad.txt', type: 'full', content: 'x' }],
+        }),
+      }],
+    })
+    // Single model plays both worker and reviewer; queue order follows call order:
+    // initial submit -> first critique (fail) -> revision submit -> second critique (pass).
+    const client = routedClient({
+      'w/a': [submit('a1'), critiqueFail, badSubmit, critiquePass],
+    })
+    const outcome = await runArena({
+      client, config: { ...cfg, verifyTimeoutMs: 5_000 }, sandbox: gitSandbox, task: 't', runId: 'r1',
+      contestants: [model('w/a')], judgePool: [model('w/a')], scrubNames: [],
+    })
+
+    expect(outcome.winner.model).toBe('w/a')
+    expect(outcome.revised).toBe(true)
+    // The second critique passed, but the revision broke verification — that must win.
+    expect(outcome.winnerVerdictPass).toBe(false)
+    expect(outcome.verify['w/a']!.status).toBe('failed')
+  })
 })

@@ -162,7 +162,10 @@ export async function delegate(deps: DelegateDeps, req: DelegateRequest): Promis
   }
 
   const winnerValid = outcome.winner.changes.every((c) => c.valid)
-  const status = winnerValid && (outcome.winnerVerdictPass || outcome.revised) ? 'ok' as const : 'failed_review' as const
+  const winnerVerifyFailed = outcome.verify[outcome.winner.model]?.status === 'failed'
+  const status = winnerValid && !winnerVerifyFailed && (outcome.winnerVerdictPass || outcome.revised)
+    ? 'ok' as const
+    : 'failed_review' as const
   const workerStats = Object.values(outcome.usage.contestants).reduce(addStats, ZERO)
   const stats = addStats(workerStats, outcome.usage.judges)
   const critique: Critique = {

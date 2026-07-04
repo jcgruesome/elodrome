@@ -137,6 +137,9 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaOutcome> {
     revised = true
     winner = await revise(opts, winner, panel.issues[winnerLabel] ?? [])
     usage.contestants[winner.model] = winner.stats
+    verify[winner.model] = winner.changes.every((c) => c.valid)
+      ? await verifyChanges(opts.sandbox, winner.changes, opts.config.verifyTimeoutMs)
+      : { status: 'skipped', checks: [] }
   }
 
   return {
@@ -172,6 +175,7 @@ async function singleSurvivor(
     ...(critique.verdict === 'fail' ? critique.issues : []),
     ...invalidReasons(entry.changes),
   ]
+  let winnerVerdictPass = critique.verdict === 'pass'
   if (problems.length > 0) {
     revised = true
     entry = await revise(opts, entry, problems)
@@ -179,10 +183,15 @@ async function singleSurvivor(
     const second = await runCritique(opts.client, reviewer.id, opts.task, entry.result)
     critique = second.critique
     usage.judges = addStats(usage.judges, second.usage)
+    const reverify = entry.changes.every((c) => c.valid)
+      ? await verifyChanges(opts.sandbox, entry.changes, opts.config.verifyTimeoutMs)
+      : { status: 'skipped' as const, checks: [] }
+    verify[entry.model] = reverify
+    winnerVerdictPass = critique.verdict === 'pass' && reverify.status !== 'failed'
   }
   return {
     winner: entry,
-    winnerVerdictPass: critique.verdict === 'pass',
+    winnerVerdictPass,
     revised,
     ranking: buildRanking([entry.model], undefined, forfeits, 1),
     judges: [reviewer.id],
