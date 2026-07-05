@@ -1,6 +1,6 @@
 # Elodrome
 
-An MCP server + CLI that lets Claude Code delegate coding tasks to NVIDIA NIM models (free endpoints) through a server-side pipeline — agentic read-only workers propose changes, a different model reviews them, and by default delegations run as blind tournaments where 2–3 models compete, a two-judge panel ranks anonymized entries, and per-tag Elo ratings accumulate into a per-repo leaderboard that routing learns from.
+An MCP server + CLI that lets Claude Code delegate coding tasks to NVIDIA NIM models (free endpoints) through a server-side pipeline — agentic read-only workers propose changes, a different model reviews them, and by default delegations run as blind tournaments where 3 models compete (round-robin backfilled from the eligible pool if any forfeit), a two-judge panel ranks anonymized entries, and per-tag Elo ratings accumulate into a per-repo leaderboard that routing learns from.
 
 ## Why
 
@@ -83,7 +83,8 @@ cp .mcp.json.example .mcp.json
 - `list_models` — Registry models with capability tags, tool-calling reliability,
   eval scores, and outcome win rates. Use it to pick a model.
 - `leaderboard` — Per-repo Elo ratings and match counts per capability tag, built from
-  tournament results and outcome reports. Optional `tag` filter.
+  tournament results and outcome reports. Match counts include any contestant pulled in
+  via round-robin backfill, not just the initial pick. Optional `tag` filter.
 - `report_outcome` — **Required** after every `delegate`, once you've reviewed the
   result: record `accepted` | `reworked` | `rejected`. Feeds win rates used for future
   routing (Elo nudge +8 / −4 / −16).
