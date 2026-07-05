@@ -1,6 +1,6 @@
 {
   "name": "elodrome",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server + CLI that delegates tasks to NVIDIA NIM models",
   "license": "MIT",
   "author": "James Sugrue",
